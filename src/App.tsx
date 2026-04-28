@@ -13,8 +13,8 @@ import Drawer from '@mui/material/Drawer';
 import AppBar from '@mui/material/AppBar';
 import Toolbar from '@mui/material/Toolbar';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import LinkIcon from '@mui/icons-material/Link';
 import MenuIcon from '@mui/icons-material/Menu';
+import CloseIcon from '@mui/icons-material/Close';
 
 import bracketsLogo from './assets/Brackets.png';
 
@@ -23,6 +23,7 @@ import CreateEventForm from './components/CreateEventForm';
 import CheckInForm from './components/CheckInForm';
 import Dashboard from './components/Dashboard';
 import ConsumerCheckIn from './components/ConsumerCheckIn';
+import PublicQRDisplay from './components/PublicQRDisplay';
 import AuthGate from './components/AuthGate';
 import OrganisersPage from './components/OrganisersPage';
 import EventSettings from './components/EventSettings';
@@ -37,7 +38,9 @@ type View = 'events' | 'event-detail' | 'organisers' | 'teams';
 type EventTab = 'checkin' | 'dashboard' | 'settings';
 
 const SIDEBAR_WIDTH = 280;
-const consumerEventId = new URLSearchParams(window.location.search).get('event');
+const searchParams = new URLSearchParams(window.location.search);
+const consumerEventId = searchParams.get('event');
+const isQRDisplay = consumerEventId && searchParams.get('display') === 'qr';
 
 // @ts-ignore
 function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSignOut: () => void }) {
@@ -46,7 +49,6 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
   const [activeEvent, setActiveEvent] = useState<GDGEvent | null>(null);
   const [tab, setTab] = useState<EventTab>('checkin');
   const [checkedInCount, setCheckedInCount] = useState(0);
-  const [copied, setCopied] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   function handleSelectEvent(event: GDGEvent) {
@@ -67,15 +69,6 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
   function handleBack() {
     setView('events');
     setActiveEvent(null);
-  }
-
-  function handleCopyLink() {
-    if (!activeEvent) return;
-    const url = `${window.location.origin}${window.location.pathname}?event=${activeEvent.id}`;
-    navigator.clipboard.writeText(url).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
   }
 
   function handleNavClick(action: () => void) {
@@ -113,21 +106,22 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
               bgcolor: 'grey.50',
               border: '1px solid',
               borderColor: 'divider',
-              borderRadius: 2,
-              p: 1.5,
+              borderRadius: 1,
+              px: 2,
+              py: 2,
               mb: 2,
             }}
           >
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.75, lineHeight: 1.3 }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.75, lineHeight: 1.3 }}>
               {activeEvent.name}
             </Typography>
             {activeEvent.description && (
-              <Typography variant="body2" color="text.secondary" sx={{ fontSize: 14, mb: 1, lineHeight: 1.4 }}>
+              <Typography variant="body1" color="text.secondary" sx={{ fontSize: 14, mb: 2, lineHeight: 1.4 }}>
                 {activeEvent.description}
               </Typography>
             )}
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 0.5 }}>
-              <Typography variant="body2" color="text.secondary" sx={{ fontSize: 14 }}>
+              <Typography variant="subtitle2" color="text.secondary" sx={{ fontSize: 12 }}>
                 {new Date(activeEvent.date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
               </Typography>
               <Chip
@@ -203,24 +197,6 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
 
       {/* Bottom actions */}
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, pt: 2 }}>
-        {view === 'event-detail' && activeEvent && (
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={copied ? undefined : <LinkIcon fontSize="small" />}
-            onClick={handleCopyLink}
-            fullWidth
-            sx={{
-              borderRadius: 9999,
-              color: copied ? 'secondary.main' : 'text.secondary',
-              borderColor: copied ? 'secondary.light' : 'divider',
-              '&:hover': { borderColor: 'primary.main', color: 'primary.main' },
-              fontSize: 13,
-            }}
-          >
-            {copied ? '✓ Copied!' : 'Check-in link'}
-          </Button>
-        )}
         <Button
           onClick={onSignOut}
           variant="outlined"
@@ -252,11 +228,11 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
         <Toolbar sx={{ gap: 1.5 }}>
           <IconButton
             edge="start"
-            onClick={() => setMobileOpen(true)}
-            aria-label="Open menu"
+            onClick={() => setMobileOpen(prev => !prev)}
+            aria-label="Toggle menu"
             sx={{ color: 'text.primary' }}
           >
-            <MenuIcon />
+            {mobileOpen ? <CloseIcon /> : <MenuIcon />}
           </IconButton>
           <Box component="img" src={bracketsLogo} alt="Brackets.ai" sx={{ height: 28, width: 'auto' }} />
           <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Check-In</Typography>
@@ -345,6 +321,9 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
 }
 
 export default function App() {
+  if (isQRDisplay && consumerEventId) {
+    return <PublicQRDisplay eventId={consumerEventId} />;
+  }
   if (consumerEventId) {
     return <ConsumerCheckIn eventId={consumerEventId} />;
   }

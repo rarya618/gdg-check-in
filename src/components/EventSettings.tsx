@@ -12,8 +12,10 @@ import Divider from '@mui/material/Divider';
 import Checkbox from '@mui/material/Checkbox';
 import CheckIcon from '@mui/icons-material/Check';
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
-import { updateEvent, deleteEvent, listenTeams, assignTeamToEvent, removeTeamFromEvent } from '../db';
+import DownloadIcon from '@mui/icons-material/Download';
+import { updateEvent, deleteEvent, listenTeams, assignTeamToEvent, removeTeamFromEvent, getAttendees } from '../db';
 import type { GDGEvent, Team } from '../types';
+import BevyImport from './BevyImport';
 
 interface Props {
   event: GDGEvent;
@@ -213,6 +215,47 @@ export default function EventSettings({ event, onEventUpdated, onDeleted }: Prop
             })}
           </Box>
         )}
+      </Paper>
+
+      {/* Export CSV */}
+      <Paper elevation={1} sx={{ p: 3, borderRadius: 2 }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600 }} gutterBottom>Export attendees</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Download all attendees (registered and checked in) as a CSV.
+        </Typography>
+        <Button
+          variant="outlined"
+          startIcon={<DownloadIcon />}
+          onClick={async () => {
+            const attendees = await getAttendees(event.id);
+            const header = 'Ticket number,First Name,Last Name,Email,Source,Checkin Date (UTC)';
+            const rows = attendees.map((a) =>
+              [a.ticketNumber, a.firstName, a.lastName, a.email, a.source, a.checkinDate ? new Date(a.checkinDate).toUTCString() : '']
+                .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+                .join(',')
+            );
+            const csv = [header, ...rows].join('\n');
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `attendees-${event.id}-${new Date().toISOString().slice(0, 10)}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+          }}
+          sx={{ borderRadius: 9999, px: 2.5 }}
+        >
+          Export CSV
+        </Button>
+      </Paper>
+
+      {/* Bevy import */}
+      <Paper elevation={1} sx={{ p: 3, borderRadius: 2 }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600 }} gutterBottom>Import from Bevy</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Upload the attendee CSV exported from Bevy to pre-load the guest list. Already-imported tickets are skipped.
+        </Typography>
+        <BevyImport eventId={event.id} />
       </Paper>
 
       {/* Danger zone */}

@@ -111,9 +111,12 @@ export function listenAttendees(
   const unsub = onValue(attendeesRef, (snap) => {
     if (!snap.exists()) { callback([]); return; }
     const data = snap.val() as Record<string, Attendee>;
-    const attendees = Object.values(data).sort((a, b) =>
-      a.checkinDate.localeCompare(b.checkinDate)
-    );
+    const attendees = Object.values(data).sort((a, b) => {
+      if (a.checkinDate && b.checkinDate) return a.checkinDate.localeCompare(b.checkinDate);
+      if (a.checkinDate) return -1;
+      if (b.checkinDate) return 1;
+      return `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
+    });
     callback(attendees);
   });
   return unsub;
@@ -132,14 +135,79 @@ export async function checkInAttendee(
 
   const attendee: Attendee = {
     ...input,
-    ticketNumber: `TKT-${String(ticketNum).padStart(4, '0')}`,
+    ticketNumber: `GDGWALKIN${String(ticketNum).padStart(4, '0')}`,
     checkinDate: new Date().toISOString(),
+    source: 'walk-in',
   };
 
   const attendeesRef = ref(db, `events/${eventId}/attendees`);
   const newRef = push(attendeesRef);
   await set(newRef, attendee);
   return attendee;
+}
+
+export async function findAttendeeByEmail(
+  eventId: string,
+  email: string
+): Promise<{ key: string; attendee: Attendee } | null> {
+  const snap = await get(ref(db, `events/${eventId}/attendees`));
+  if (!snap.exists()) return null;
+  const data = snap.val() as Record<string, Attendee>;
+  const entry = Object.entries(data).find(
+    ([, a]) => a.email.toLowerCase() === email.toLowerCase()
+  );
+  if (!entry) return null;
+  return { key: entry[0], attendee: entry[1] };
+}
+
+export async function markCheckedIn(
+  eventId: string,
+  key: string,
+  attendee: Attendee
+): Promise<Attendee> {
+  const checkinDate = new Date().toISOString();
+  await update(ref(db, `events/${eventId}/attendees/${key}`), { checkinDate });
+  return { ...attendee, checkinDate };
+}
+
+export async function undoCheckIn(eventId: string, email: string): Promise<void> {
+  const result = await findAttendeeByEmail(eventId, email);
+  if (!result) return;
+  await update(ref(db, `events/${eventId}/attendees/${result.key}`), { checkinDate: null });
+}
+
+export async function importBevyAttendees(
+  eventId: string,
+  attendees: Omit<Attendee, 'source'>[]
+): Promise<{ imported: number; skipped: number }> {
+  const snap = await get(ref(db, `events/${eventId}/attendees`));
+  const existing = snap.exists() ? new Set(Object.keys(snap.val())) : new Set<string>();
+
+  const updates: Record<string, Attendee> = {};
+  let imported = 0;
+  let skipped = 0;
+
+  for (const a of attendees) {
+    if (existing.has(a.ticketNumber)) {
+      skipped++;
+    } else {
+      updates[`events/${eventId}/attendees/${a.ticketNumber}`] = { ...a, source: 'bevy' };
+      imported++;
+    }
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await update(ref(db), updates);
+  }
+
+  return { imported, skipped };
+}
+
+export async function getAttendees(eventId: string): Promise<Attendee[]> {
+  const snap = await get(ref(db, `events/${eventId}/attendees`));
+  if (!snap.exists()) return [];
+  const data = snap.val() as Record<string, Attendee>;
+  return Object.values(data);
 }
 
 export async function isEmailRegistered(

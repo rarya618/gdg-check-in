@@ -1,9 +1,11 @@
 export interface Attendee {
   ticketNumber: string;
+  bevyOrderNumber?: string;
   firstName: string;
   lastName: string;
   email: string;
-  checkinDate: string; // ISO 8601 UTC
+  checkinDate?: string; // ISO 8601 UTC — absent means not yet checked in
+  source: 'bevy' | 'walk-in';
 }
 
 export type AdminRole = 'superadmin' | 'organiser' | 'team_member';

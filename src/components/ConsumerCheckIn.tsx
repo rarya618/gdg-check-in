@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ref, get } from 'firebase/database';
 import { db } from '../firebase';
-import { checkInAttendee, isEmailRegistered } from '../db';
+import { findAttendeeByEmail, markCheckedIn, checkInAttendee } from '../db';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
@@ -11,41 +11,26 @@ import Alert from '@mui/material/Alert';
 import CircularProgress from '@mui/material/CircularProgress';
 import Divider from '@mui/material/Divider';
 import type { Attendee, GDGEvent } from '../types';
+import AppLogo from './AppLogo';
 
 interface Props {
   eventId: string;
 }
 
-function GDGIcon({ size = 56 }: { size?: number }) {
-  return (
-    <Box
-      sx={{
-        width: size,
-        height: size,
-        bgcolor: '#fff',
-        borderRadius: 2.5,
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: '4px',
-        p: '8px',
-        boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
-      }}
-    >
-      <Box sx={{ bgcolor: '#4285F4', borderRadius: '3px' }} />
-      <Box sx={{ bgcolor: '#EA4335', borderRadius: '3px' }} />
-      <Box sx={{ bgcolor: '#FBBC05', borderRadius: '3px' }} />
-      <Box sx={{ bgcolor: '#34A853', borderRadius: '3px' }} />
-    </Box>
-  );
-}
+type Mode = 'lookup' | 'found-pre' | 'found-duplicate' | 'walk-in';
 
 export default function ConsumerCheckIn({ eventId }: Props) {
   const [event, setEvent] = useState<GDGEvent | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
-  const [form, setForm] = useState({ firstName: '', lastName: '', email: '' });
+
+  const [email, setEmail] = useState('');
+  const [mode, setMode] = useState<Mode>('lookup');
+  const [foundKey, setFoundKey] = useState('');
+  const [foundAttendee, setFoundAttendee] = useState<Attendee | null>(null);
+  const [walkIn, setWalkIn] = useState({ firstName: '', lastName: '' });
   const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState<Attendee | null>(null);
 
   useEffect(() => {
@@ -57,29 +42,51 @@ export default function ConsumerCheckIn({ eventId }: Props) {
     }).catch(() => { setNotFound(true); setLoading(false); });
   }, [eventId]);
 
-  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+  async function handleLookup(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = email.trim();
+    if (!trimmed) { setError('Enter your email address.'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) { setError('Please enter a valid email address.'); return; }
+    setBusy(true);
     setError('');
+    try {
+      const result = await findAttendeeByEmail(eventId, trimmed);
+      if (!result) {
+        setMode('walk-in');
+      } else if (result.attendee.checkinDate) {
+        setFoundAttendee(result.attendee);
+        setMode('found-duplicate');
+      } else {
+        setFoundKey(result.key);
+        setFoundAttendee(result.attendee);
+        setMode('found-pre');
+      }
+    } catch {
+      setError('Something went wrong. Please try again.');
+    }
+    setBusy(false);
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const { firstName, lastName, email } = form;
-    if (!firstName.trim() || !lastName.trim() || !email.trim()) {
-      setError('All fields are required.');
-      return;
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setError('Please enter a valid email address.');
-      return;
-    }
-    setSaving(true);
+  async function handleConfirmBevy() {
+    if (!foundAttendee || !foundKey) return;
+    setBusy(true);
+    setError('');
     try {
-      if (await isEmailRegistered(eventId, email)) {
-        setError('This email has already been checked in.');
-        setSaving(false);
-        return;
-      }
+      const checked = await markCheckedIn(eventId, foundKey, foundAttendee);
+      setSuccess(checked);
+    } catch {
+      setError('Check-in failed. Please try again.');
+    }
+    setBusy(false);
+  }
+
+  async function handleWalkIn(e: React.FormEvent) {
+    e.preventDefault();
+    const { firstName, lastName } = walkIn;
+    if (!firstName.trim() || !lastName.trim()) { setError('First and last name are required.'); return; }
+    setBusy(true);
+    setError('');
+    try {
       const attendee = await checkInAttendee(eventId, {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
@@ -89,7 +96,7 @@ export default function ConsumerCheckIn({ eventId }: Props) {
     } catch {
       setError('Check-in failed. Please try again.');
     }
-    setSaving(false);
+    setBusy(false);
   }
 
   const bgSx = {
@@ -199,7 +206,9 @@ export default function ConsumerCheckIn({ eventId }: Props) {
       }}>
         <Box sx={{ textAlign: 'left', flex: 1 }}>
           <Box sx={{ display: 'flex', justifyContent: 'left', mb: 2.5 }}>
-            <GDGIcon size={56} />
+            <Box sx={{ bgcolor: '#fff', borderRadius: 9999, pl: 2, pr: 3, pt: 0.75, pb: 0, display: 'inline-flex', alignItems: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
+              <AppLogo />
+            </Box>
           </Box>
           <Typography variant="h4" sx={{ fontWeight: 700, fontSize: { xs: '1.75rem', md: '2.125rem' } }}>{event?.name}</Typography>
           {event?.date && (
@@ -215,27 +224,96 @@ export default function ConsumerCheckIn({ eventId }: Props) {
         </Box>
 
         <Paper elevation={1} sx={{ p: 3.5, pb: 4, width: '100%', maxWidth: { xs: '100%', md: 420 }, borderRadius: 2 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, mb: 0 }}>Check yourself in</Typography>
-          <Typography variant="body2">For those who are not registered for the event</Typography>
-          <Box component="form" onSubmit={handleSubmit} noValidate sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5 }}>
-              <TextField name="firstName" label="First Name" value={form.firstName} onChange={handleChange} placeholder="Jane" fullWidth />
-              <TextField name="lastName" label="Last Name" value={form.lastName} onChange={handleChange} placeholder="Doe" fullWidth />
+          <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>Check yourself in</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>Enter your email to get started.</Typography>
+
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {/* Email row — always visible */}
+            <Box component="form" onSubmit={handleLookup} sx={{ display: 'flex', gap: 1 }}>
+              <TextField
+                type="email"
+                label="Email"
+                value={email}
+                onChange={(e) => { setEmail(e.target.value); setError(''); setMode('lookup'); }}
+                size="small"
+                fullWidth
+                disabled={mode === 'found-pre' || mode === 'walk-in'}
+              />
+              {(mode === 'lookup' || mode === 'found-duplicate') && (
+                <Button type="submit" variant="contained" disabled={busy} sx={{ borderRadius: 9999, whiteSpace: 'nowrap', px: 3.5, py: 0.875 }}>
+                  {busy ? <CircularProgress size={20} color="inherit" /> : 'Next'}
+                </Button>
+              )}
             </Box>
-            <TextField name="email" type="email" label="Email" value={form.email} onChange={handleChange} placeholder="jane@example.com" fullWidth />
 
             {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
 
-            <Button
-              type="submit"
-              variant="contained"
-              size="large"
-              disabled={saving}
-              fullWidth
-              sx={{ borderRadius: 9999, py: 1.5, mt: 4, px: 2.5 }}
-            >
-              {saving ? 'Checking in…' : 'Check In'}
-            </Button>
+            {mode === 'found-duplicate' && foundAttendee && (
+              <Alert severity="warning" sx={{ borderRadius: 2 }}>
+                You're already checked in as <strong>{foundAttendee.firstName} {foundAttendee.lastName}</strong>.
+              </Alert>
+            )}
+
+            {/* Pre-registered */}
+            {mode === 'found-pre' && foundAttendee && (
+              <>
+                <Alert severity="success" sx={{ borderRadius: 2 }}>
+                  Welcome back, <strong>{foundAttendee.firstName}</strong>! Tap below to check in.
+                </Alert>
+                <Button
+                  variant="contained"
+                  size="large"
+                  disabled={busy}
+                  onClick={handleConfirmBevy}
+                  fullWidth
+                  sx={{ borderRadius: 9999, py: 1.5, fontWeight: 700 }}
+                >
+                  {busy ? <CircularProgress size={22} color="inherit" /> : 'Confirm check-in'}
+                </Button>
+                <Button variant="text" size="small" onClick={() => { setMode('lookup'); setEmail(''); setError(''); }} sx={{ color: 'text.secondary' }}>
+                  Not you?
+                </Button>
+              </>
+            )}
+
+            {/* Walk-in */}
+            {mode === 'walk-in' && (
+              <>
+                <Box component="form" onSubmit={handleWalkIn} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5 }}>
+                    <TextField
+                      label="First Name"
+                      value={walkIn.firstName}
+                      onChange={(e) => { setWalkIn((w) => ({ ...w, firstName: e.target.value })); setError(''); }}
+                      placeholder="Jane"
+                      size="small"
+                      fullWidth
+                    />
+                    <TextField
+                      label="Last Name"
+                      value={walkIn.lastName}
+                      onChange={(e) => { setWalkIn((w) => ({ ...w, lastName: e.target.value })); setError(''); }}
+                      placeholder="Doe"
+                      size="small"
+                      fullWidth
+                    />
+                  </Box>
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    size="large"
+                    disabled={busy}
+                    fullWidth
+                    sx={{ borderRadius: 9999, py: 1.5, fontWeight: 700 }}
+                  >
+                    {busy ? <CircularProgress size={22} color="inherit" /> : 'Check in'}
+                  </Button>
+                </Box>
+                <Button variant="text" size="small" onClick={() => { setMode('lookup'); setEmail(''); setError(''); }} sx={{ color: 'text.secondary' }}>
+                  Back
+                </Button>
+              </>
+            )}
           </Box>
         </Paper>
       </Box>
