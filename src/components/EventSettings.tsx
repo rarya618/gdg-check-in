@@ -23,6 +23,19 @@ interface Props {
   onDeleted: () => void;
 }
 
+/**
+ * Settings panel for a single event, composed of five independent cards:
+ *
+ * 1. **Event details** — editable name, date, description; saved on explicit submit.
+ * 2. **Check-in status** — toggle between `open` / `closed`; takes effect immediately.
+ * 3. **Teams** — checkbox list of all teams; each toggle writes directly to the database.
+ * 4. **Export attendees** — one-shot CSV download of all attendees (registered + checked-in).
+ * 5. **Import from Bevy** — CSV upload flow delegated to `BevyImport`.
+ * 6. **Danger zone** — two-step delete confirmation; calls `onDeleted` after deletion.
+ *
+ * `onEventUpdated` is called whenever local state changes (name, date, status, assignedTeams)
+ * so the parent (`AdminApp`) can keep its `activeEvent` in sync without re-fetching.
+ */
 export default function EventSettings({ event, onEventUpdated, onDeleted }: Props) {
   const [form, setForm] = useState({
     name: event.name,
@@ -228,9 +241,9 @@ export default function EventSettings({ event, onEventUpdated, onDeleted }: Prop
           startIcon={<DownloadIcon />}
           onClick={async () => {
             const attendees = await getAttendees(event.id);
-            const header = 'Ticket number,First Name,Last Name,Email,Source,Checkin Date (UTC)';
+            const header = 'first_name,last_name,email,checked_in,job_title,company,ticket_type';
             const rows = attendees.map((a) =>
-              [a.ticketNumber, a.firstName, a.lastName, a.email, a.source, a.checkinDate ? new Date(a.checkinDate).toUTCString() : '']
+              [a.firstName, a.lastName, a.email, a.checkinDate ? 'true' : 'false', a.jobTitle ?? '', a.company ?? '', a.ticketType ?? '']
                 .map((v) => `"${String(v).replace(/"/g, '""')}"`)
                 .join(',')
             );

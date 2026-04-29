@@ -10,13 +10,10 @@ import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
 import Drawer from '@mui/material/Drawer';
-import AppBar from '@mui/material/AppBar';
-import Toolbar from '@mui/material/Toolbar';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import MenuIcon from '@mui/icons-material/Menu';
 import CloseIcon from '@mui/icons-material/Close';
 
-import bracketsLogo from './assets/Brackets.png';
 
 import EventsList from './components/EventsList';
 import CreateEventForm from './components/CreateEventForm';
@@ -34,14 +31,33 @@ import { listenEvents } from './db';
 import type { GDGEvent, AdminRole } from './types';
 import type { User } from 'firebase/auth';
 
+/** Top-level navigation views available in the admin shell. */
 type View = 'events' | 'event-detail' | 'organisers' | 'teams';
+/** Tabs available when drilling into an event. */
 type EventTab = 'checkin' | 'dashboard' | 'settings';
 
 const SIDEBAR_WIDTH = 280;
+
+// URL-based routing: the app serves three distinct surfaces from one origin.
+// ?event=<id>            → ConsumerCheckIn (public self-service form)
+// ?event=<id>&display=qr → PublicQRDisplay (kiosk QR code screen)
+// (no params)            → AdminApp (authenticated staff interface)
 const searchParams = new URLSearchParams(window.location.search);
 const consumerEventId = searchParams.get('event');
 const isQRDisplay = consumerEventId && searchParams.get('display') === 'qr';
 
+/**
+ * Main authenticated admin shell.
+ *
+ * Renders a fixed sidebar (desktop) / drawer (mobile) for navigation and a
+ * main content area that mounts the active view. State is kept here so that
+ * navigating away from an event and back doesn't re-mount the event components.
+ *
+ * Role-based nav visibility:
+ * - superadmin  → Events, Organisers, Teams
+ * - organiser   → Events, Teams
+ * - team_member → Teams only
+ */
 // @ts-ignore
 function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSignOut: () => void }) {
   const [view, setView] = useState<View>(role === 'team_member' ? 'teams' : 'events');
@@ -51,6 +67,7 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
   const [checkedInCount, setCheckedInCount] = useState(0);
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  /** Drills into an event, defaulting to the Dashboard tab and resetting the checked-in badge. */
   function handleSelectEvent(event: GDGEvent) {
     setActiveEvent(event);
     setTab('dashboard');
@@ -58,6 +75,11 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
     setView('event-detail');
   }
 
+  /**
+   * Called after a new event is successfully created.
+   * Starts a temporary listener to wait for the new event to appear in the
+   * events collection, then immediately navigates into it.
+   */
   function handleEventCreated(eventId: string) {
     setShowCreate(false);
     const unsub = listenEvents((events) => {
@@ -81,26 +103,36 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
   const isOpen = activeEvent?.status === 'open';
 
 
-  const sidebarContent = (
+  const sidebarContent = (isMobile: boolean) => (
     <>
-      {/* Logo / brand */}
-      <Box
-        component="button"
-        onClick={() => handleNavClick(() => { setView('events'); setActiveEvent(null); })}
-        sx={{ display: 'flex', alignItems: 'center', gap: 0.5, border: 'none', bgcolor: 'transparent', cursor: 'pointer', p: 0, mb: 1, textAlign: 'left' }}
-      >
-        <AppLogo />
-      </Box>
+      {/* Mobile sidebar header: logo + close button */}
+      {isMobile ? (
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+          <Box
+            component="button"
+            onClick={() => handleNavClick(() => { setView('events'); setActiveEvent(null); })}
+            sx={{ display: 'flex', alignItems: 'center', gap: 0.5, border: 'none', bgcolor: 'transparent', cursor: 'pointer', p: 0, textAlign: 'left' }}
+          >
+            <AppLogo />
+          </Box>
+          <IconButton onClick={() => setMobileOpen(false)} aria-label="Close menu" size="small" sx={{ color: 'text.secondary' }}>
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Box>
+      ) : (
+        /* Desktop logo */
+        <Box
+          component="button"
+          onClick={() => handleNavClick(() => { setView('events'); setActiveEvent(null); })}
+          sx={{ display: 'flex', alignItems: 'center', gap: 0.5, border: 'none', bgcolor: 'transparent', cursor: 'pointer', p: 0, mb: 1, textAlign: 'left' }}
+        >
+          <AppLogo />
+        </Box>
+      )}
 
       {/* Event context block */}
       {view === 'event-detail' && activeEvent && (
         <>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
-            <IconButton onClick={() => handleNavClick(handleBack)} size="small" aria-label="Back" sx={{ color: 'text.secondary', ml: -0.5 }}>
-              <ArrowBackIcon fontSize="small" />
-            </IconButton>
-            <Typography variant="caption" color="text.secondary">Back to events</Typography>
-          </Box>
           <Box
             sx={{
               bgcolor: 'grey.50',
@@ -212,32 +244,24 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
 
-      {/* Mobile top AppBar */}
-      <AppBar
-        position="fixed"
-        elevation={0}
+      {/* Mobile floating hamburger */}
+      <IconButton
+        onClick={() => setMobileOpen(true)}
+        aria-label="Open menu"
         sx={{
-          display: { md: 'none' },
-          bgcolor: 'background.paper',
-          borderBottom: '1px solid',
-          borderColor: 'divider',
-          color: 'text.primary',
+          display: { xs: 'flex', md: 'none' },
+          position: 'fixed',
+          top: 12,
+          left: 12,
           zIndex: (theme) => theme.zIndex.drawer + 1,
+          color: 'text.primary',
+          bgcolor: 'background.paper',
+          boxShadow: 1,
+          '&:hover': { bgcolor: 'grey.100' },
         }}
       >
-        <Toolbar sx={{ gap: 1.5 }}>
-          <IconButton
-            edge="start"
-            onClick={() => setMobileOpen(prev => !prev)}
-            aria-label="Toggle menu"
-            sx={{ color: 'text.primary' }}
-          >
-            {mobileOpen ? <CloseIcon /> : <MenuIcon />}
-          </IconButton>
-          <Box component="img" src={bracketsLogo} alt="Brackets.ai" sx={{ height: 28, width: 'auto' }} />
-          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Check-In</Typography>
-        </Toolbar>
-      </AppBar>
+        <MenuIcon />
+      </IconButton>
 
       {/* Mobile Drawer */}
       <Drawer
@@ -257,7 +281,7 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
           },
         }}
       >
-        {sidebarContent}
+        {sidebarContent(true)}
       </Drawer>
 
       {/* Desktop Sidebar */}
@@ -279,7 +303,7 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
           overflowY: 'auto',
         }}
       >
-        {sidebarContent}
+        {sidebarContent(false)}
       </Box>
 
       {/* Main content */}
@@ -289,10 +313,22 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
           ml: { xs: 0, md: `${SIDEBAR_WIDTH}px` },
           flex: 1,
           pb: 8,
-          pt: { xs: 7, md: 0 },
+          pt: 0,
           minWidth: 0,
         }}
       >
+        {view === 'event-detail' && activeEvent && (
+          <Box sx={{ px: { xs: 2, md: 3 }, pt: { xs: 2, md: 2 }, pb: 0 }}>
+            <Button
+              onClick={() => handleNavClick(handleBack)}
+              startIcon={<ArrowBackIcon fontSize="small" />}
+              size="small"
+              sx={{ color: 'text.secondary', textTransform: 'none', fontWeight: 400, fontSize: 12, px: 1, ml: -1 }}
+            >
+              Back to events
+            </Button>
+          </Box>
+        )}
         {view === 'events' && (
           <EventsList onSelect={handleSelectEvent} onCreateNew={() => setShowCreate(true)} />
         )}
@@ -320,6 +356,12 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
   );
 }
 
+/**
+ * Root component. Decides which surface to render based on URL query params:
+ * - `?event=<id>&display=qr` → PublicQRDisplay (kiosk mode)
+ * - `?event=<id>`            → ConsumerCheckIn (attendee self-service)
+ * - (none)                   → AuthGate → AdminApp
+ */
 export default function App() {
   if (isQRDisplay && consumerEventId) {
     return <PublicQRDisplay eventId={consumerEventId} />;

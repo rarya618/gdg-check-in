@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import TextField from '@mui/material/TextField';
@@ -27,15 +27,34 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { listenAttendees, findAttendeeByEmail, markCheckedIn, checkInAttendee, undoCheckIn } from '../db';
 import Chip from '@mui/material/Chip';
 import Tooltip from '@mui/material/Tooltip';
-import { QRCodeSVG } from 'qrcode.react';
+import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
+import DownloadIcon from '@mui/icons-material/Download';
 import type { Attendee } from '../types';
 
 interface Props {
   eventId: string;
 }
 
+/**
+ * State machine for the Add Attendee dialog:
+ * - `lookup`          — initial state; shows email field + "Look up" button.
+ * - `found-pre`       — email matched a pre-registered, unchecked-in attendee; confirm to check in.
+ * - `found-duplicate` — email matched an already checked-in attendee; shows a warning.
+ * - `walk-in`         — email not found; collect first/last name for a walk-in check-in.
+ * - `success`         — check-in completed; shows summary with "Add another" / "Done".
+ */
 type DialogMode = 'lookup' | 'found-pre' | 'found-duplicate' | 'walk-in' | 'success';
 
+/**
+ * Dialog for manually adding or checking in an attendee from the Dashboard.
+ *
+ * Flow:
+ *   1. Staff enters an email and clicks "Look up".
+ *   2. If the email is pre-registered → confirm check-in (found-pre).
+ *   3. If already checked in → show duplicate warning (found-duplicate).
+ *   4. If unknown → collect name and create a walk-in record (walk-in).
+ *   5. On success → show confirmation with ticket details (success).
+ */
 function AddAttendeeDialog({ eventId, open, onClose }: { eventId: string; open: boolean; onClose: () => void }) {
   const [email, setEmail] = useState('');
   const [mode, setMode] = useState<DialogMode>('lookup');
@@ -275,9 +294,18 @@ function AddAttendeeDialog({ eventId, open, onClose }: { eventId: string; open: 
   );
 }
 
+/**
+ * Dialog that surfaces the event's public check-in URL as a QR code.
+ *
+ * Provides three sharing options:
+ * - **Copy link** — the consumer check-in URL (`?event=<id>`).
+ * - **Display URL** — the kiosk QR display URL (`?event=<id>&display=qr`).
+ * - **Download PNG** — renders a hidden high-res QRCodeCanvas and exports it as a 512×512 PNG.
+ */
 function QRDialog({ eventId, open, onClose }: { eventId: string; open: boolean; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   const [copiedDisplay, setCopiedDisplay] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const base = `${window.location.origin}${window.location.pathname}`;
   const checkInUrl = `${base}?event=${eventId}`;
   const displayUrl = `${base}?event=${eventId}&display=qr`;
@@ -294,6 +322,16 @@ function QRDialog({ eventId, open, onClose }: { eventId: string; open: boolean; 
       setCopiedDisplay(true);
       setTimeout(() => setCopiedDisplay(false), 2000);
     });
+  }
+
+  function handleDownload() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const url = canvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `checkin-qr-${eventId}.png`;
+    a.click();
   }
 
   return (
@@ -313,6 +351,10 @@ function QRDialog({ eventId, open, onClose }: { eventId: string; open: boolean; 
       <DialogContent sx={{ pb: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2.5 }}>
         <Box sx={{ p: 2, bgcolor: 'white', borderRadius: 2, border: '1px solid', borderColor: 'divider', display: 'inline-flex' }}>
           <QRCodeSVG value={checkInUrl} size={220} />
+        </Box>
+        {/* Hidden canvas used only for PNG export */}
+        <Box sx={{ display: 'none' }}>
+          <QRCodeCanvas ref={canvasRef} value={checkInUrl} size={512} />
         </Box>
         <Box sx={{ width: '100%', bgcolor: 'grey.50', borderRadius: 2, p: 1.5, wordBreak: 'break-all' }}>
           <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>{checkInUrl}</Typography>
@@ -343,11 +385,31 @@ function QRDialog({ eventId, open, onClose }: { eventId: string; open: boolean; 
             </Button>
           </Tooltip>
         </Box>
+        <Button
+          variant="outlined"
+          startIcon={<DownloadIcon fontSize="small" />}
+          onClick={handleDownload}
+          fullWidth
+          sx={{ borderRadius: 9999, fontWeight: 700, color: 'text.secondary', borderColor: 'divider' }}
+        >
+          Download PNG
+        </Button>
       </DialogContent>
     </Dialog>
   );
 }
 
+/**
+ * Real-time attendee dashboard for a single event.
+ *
+ * Subscribes to `events/{eventId}/attendees` via `listenAttendees` and keeps
+ * the table in sync without polling. Displays a checked-in count badge and
+ * supports inline check-in / undo directly from the table rows.
+ *
+ * Contains two sub-dialogs:
+ * - `AddAttendeeDialog` — manual lookup + check-in / walk-in flow.
+ * - `QRDialog`          — share the public check-in URL / kiosk display URL.
+ */
 export default function Dashboard({ eventId }: Props) {
   const [attendees, setAttendees] = useState<Attendee[]>([]);
   const [search, setSearch] = useState('');

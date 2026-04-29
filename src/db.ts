@@ -1,18 +1,50 @@
+/**
+ * Database access layer for the GDG Check-In app.
+ *
+ * All reads and writes to Firebase Realtime Database go through this module.
+ * Firebase RTDB path structure:
+ *
+ *   admins/
+ *     {emailKey}/          — Admin record (role, addedAt)
+ *   events/
+ *     {eventId}/           — GDGEvent fields (name, date, status, …)
+ *       attendees/
+ *         {ticketNumber}/  — Attendee record
+ *       ticketCounter      — Atomic integer for walk-in ticket numbering
+ *       assignedTeams/
+ *         {teamId}         — true (presence flag)
+ *   teams/
+ *     {teamId}/            — Team record (name, createdAt)
+ *       members/
+ *         {emailKey}       — true (presence flag)
+ *
+ * Listener functions (listenXxx) return an unsubscribe callback — call it in
+ * a useEffect cleanup to avoid memory leaks.
+ */
 import { ref, push, set, update, onValue, runTransaction, get, remove } from 'firebase/database';
 import { db } from './firebase';
 import type { Attendee, GDGEvent, Admin, AdminRole, EventStatus, Team } from './types';
 
-// Firebase keys can't contain dots — encode email by replacing . with ,
+/**
+ * Converts an email address into a Firebase-safe key.
+ * Firebase RTDB forbids `.` in path segments, so we replace each `.` with `,`.
+ * The encoding is reversible: `,` → `.`.
+ */
 export function emailToKey(email: string) {
   return email.toLowerCase().replace(/\./g, ',');
 }
 
+/** Fetches a single admin record by email. Returns `null` if the email is not in the admins list. */
 export async function getAdmin(email: string): Promise<Admin | null> {
   const snap = await get(ref(db, `admins/${emailToKey(email)}`));
   if (!snap.exists()) return null;
   return snap.val() as Admin;
 }
 
+/**
+ * Writes an admin record only if one does not already exist for this email.
+ * Used at app startup to ensure at least one superadmin is always present.
+ */
 export async function seedAdmin(email: string, role: AdminRole): Promise<void> {
   const key = emailToKey(email);
   const snap = await get(ref(db, `admins/${key}`));
@@ -21,6 +53,11 @@ export async function seedAdmin(email: string, role: AdminRole): Promise<void> {
   }
 }
 
+/**
+ * Subscribes to the full admins list in real time.
+ * Delivers an alphabetically sorted array on every change.
+ * @returns Unsubscribe function — call in a useEffect cleanup.
+ */
 export function listenAdmins(callback: (admins: Admin[]) => void): () => void {
   const adminsRef = ref(db, 'admins');
   return onValue(adminsRef, (snap) => {
@@ -31,6 +68,7 @@ export function listenAdmins(callback: (admins: Admin[]) => void): () => void {
   });
 }
 
+/** Creates or overwrites an admin record. Overwrites silently if the email already exists. */
 export async function addAdmin(email: string, role: AdminRole): Promise<void> {
   const key = emailToKey(email);
   await set(ref(db, `admins/${key}`), {
@@ -40,14 +78,22 @@ export async function addAdmin(email: string, role: AdminRole): Promise<void> {
   });
 }
 
+/** Permanently removes an admin. No-op if the email does not exist. */
 export async function removeAdmin(email: string): Promise<void> {
   await remove(ref(db, `admins/${emailToKey(email)}`));
 }
 
+/** Updates only the `role` field for an existing admin without touching other fields. */
 export async function updateAdminRole(email: string, role: AdminRole): Promise<void> {
   await set(ref(db, `admins/${emailToKey(email)}/role`), role);
 }
 
+/**
+ * Subscribes to all events in real time, sorted newest-first by `createdAt`.
+ * Missing `status` fields in legacy nodes default to `'open'`.
+ * @param onError Optional error handler (e.g. permission denied on sign-out).
+ * @returns Unsubscribe function — call in a useEffect cleanup.
+ */
 export function listenEvents(
   callback: (events: GDGEvent[]) => void,
   onError?: (err: Error) => void
@@ -69,6 +115,11 @@ export function listenEvents(
   return unsub;
 }
 
+/**
+ * Creates a new event using a Firebase push-key as the ID.
+ * New events default to `status: 'open'`.
+ * @returns The Firebase push-key (`eventId`) of the newly created event.
+ */
 export async function createEvent(
   data: Pick<GDGEvent, 'name' | 'date' | 'description'>
 ): Promise<string> {
@@ -85,6 +136,10 @@ export async function createEvent(
   return newRef.key!;
 }
 
+/**
+ * Partially updates an event's mutable fields.
+ * Passing `description: ''` removes the field from the database (sets it to `null`).
+ */
 export async function updateEvent(
   eventId: string,
   data: Partial<Pick<GDGEvent, 'name' | 'date' | 'description' | 'status'>>
@@ -99,10 +154,19 @@ export async function updateEvent(
   await update(ref(db, `events/${eventId}`), updates);
 }
 
+/**
+ * Permanently deletes an event node and all its nested data (attendees, ticketCounter, assignedTeams).
+ * This is irreversible — confirm with the user before calling.
+ */
 export async function deleteEvent(eventId: string): Promise<void> {
   await remove(ref(db, `events/${eventId}`));
 }
 
+/**
+ * Subscribes to all attendees for an event in real time.
+ * Sort order: checked-in attendees first (by check-in time), then remaining alphabetically by full name.
+ * @returns Unsubscribe function — call in a useEffect cleanup.
+ */
 export function listenAttendees(
   eventId: string,
   callback: (attendees: Attendee[]) => void
@@ -122,6 +186,15 @@ export function listenAttendees(
   return unsub;
 }
 
+/**
+ * Checks in a walk-in attendee who was not pre-registered via Bevy.
+ *
+ * Uses a Firebase transaction on `ticketCounter` to assign a globally unique,
+ * sequential ticket number (`GDGWALKIN0001`, `GDGWALKIN0002`, …) without races
+ * when multiple staff devices check in attendees simultaneously.
+ *
+ * @returns The newly created Attendee record including the generated ticket number.
+ */
 export async function checkInAttendee(
   eventId: string,
   input: Pick<Attendee, 'firstName' | 'lastName' | 'email'>
@@ -146,6 +219,14 @@ export async function checkInAttendee(
   return attendee;
 }
 
+/**
+ * Scans all attendees for the given event and returns the first whose email matches (case-insensitive).
+ *
+ * Returns both the Firebase node key and the attendee record so the caller can
+ * pass the key directly to `markCheckedIn` without a second lookup.
+ *
+ * @returns `{ key, attendee }` if found, or `null` if no attendee has that email.
+ */
 export async function findAttendeeByEmail(
   eventId: string,
   email: string
@@ -160,6 +241,13 @@ export async function findAttendeeByEmail(
   return { key: entry[0], attendee: entry[1] };
 }
 
+/**
+ * Stamps a pre-registered attendee as checked in by writing the current UTC timestamp
+ * to their `checkinDate` field.
+ *
+ * @param key The Firebase node key (ticket number for Bevy attendees, push-key for walk-ins).
+ * @returns The updated Attendee with `checkinDate` set.
+ */
 export async function markCheckedIn(
   eventId: string,
   key: string,
@@ -170,12 +258,30 @@ export async function markCheckedIn(
   return { ...attendee, checkinDate };
 }
 
+/**
+ * Removes the `checkinDate` from an attendee, effectively undoing their check-in.
+ * Looks up the attendee by email first, then sets `checkinDate` to `null`
+ * (Firebase RTDB deletes a field when set to null).
+ * No-op if the email is not found.
+ */
 export async function undoCheckIn(eventId: string, email: string): Promise<void> {
   const result = await findAttendeeByEmail(eventId, email);
   if (!result) return;
   await update(ref(db, `events/${eventId}/attendees/${result.key}`), { checkinDate: null });
 }
 
+/**
+ * Bulk-imports attendees parsed from a Bevy CSV export.
+ *
+ * Deduplication is by ticket number: any attendee whose `ticketNumber` already
+ * exists as a key under `events/{eventId}/attendees` is skipped. This makes
+ * re-importing the same CSV safe.
+ *
+ * All new records are written in a single `update()` call so the operation is
+ * atomic — partial imports cannot happen if the function throws mid-way.
+ *
+ * @returns `{ imported, skipped }` counts for UI feedback.
+ */
 export async function importBevyAttendees(
   eventId: string,
   attendees: Omit<Attendee, 'source'>[]
@@ -203,6 +309,10 @@ export async function importBevyAttendees(
   return { imported, skipped };
 }
 
+/**
+ * One-shot fetch of all attendees for an event (no real-time subscription).
+ * Used by the CSV export feature which only needs a point-in-time snapshot.
+ */
 export async function getAttendees(eventId: string): Promise<Attendee[]> {
   const snap = await get(ref(db, `events/${eventId}/attendees`));
   if (!snap.exists()) return [];
@@ -210,6 +320,10 @@ export async function getAttendees(eventId: string): Promise<Attendee[]> {
   return Object.values(data);
 }
 
+/**
+ * Returns `true` if any attendee in the event has the given email (case-insensitive).
+ * Used by the public consumer check-in form to gate the QR self-service flow.
+ */
 export async function isEmailRegistered(
   eventId: string,
   email: string
@@ -222,14 +336,20 @@ export async function isEmailRegistered(
   );
 }
 
+/** Adds a team to an event's `assignedTeams` map. Idempotent — safe to call if already assigned. */
 export async function assignTeamToEvent(eventId: string, teamId: string): Promise<void> {
   await set(ref(db, `events/${eventId}/assignedTeams/${teamId}`), true);
 }
 
+/** Removes a team from an event's `assignedTeams` map. No-op if not currently assigned. */
 export async function removeTeamFromEvent(eventId: string, teamId: string): Promise<void> {
   await remove(ref(db, `events/${eventId}/assignedTeams/${teamId}`));
 }
 
+/**
+ * Subscribes to all teams in real time, sorted oldest-first by `createdAt`.
+ * @returns Unsubscribe function — call in a useEffect cleanup.
+ */
 export function listenTeams(callback: (teams: Team[]) => void): () => void {
   const teamsRef = ref(db, 'teams');
   return onValue(teamsRef, (snap) => {
@@ -242,20 +362,27 @@ export function listenTeams(callback: (teams: Team[]) => void): () => void {
   });
 }
 
+/**
+ * Creates a new team.
+ * @returns The Firebase push-key (`teamId`) of the new team.
+ */
 export async function createTeam(name: string): Promise<string> {
   const newRef = push(ref(db, 'teams'));
   await set(newRef, { name, createdAt: new Date().toISOString() });
   return newRef.key!;
 }
 
+/** Permanently deletes a team node and all its members. */
 export async function deleteTeam(teamId: string): Promise<void> {
   await remove(ref(db, `teams/${teamId}`));
 }
 
+/** Adds a member to a team using their email key. Idempotent. */
 export async function addTeamMember(teamId: string, email: string): Promise<void> {
   await set(ref(db, `teams/${teamId}/members/${emailToKey(email)}`), true);
 }
 
+/** Removes a member from a team. No-op if the member is not in the team. */
 export async function removeTeamMember(teamId: string, email: string): Promise<void> {
   await remove(ref(db, `teams/${teamId}/members/${emailToKey(email)}`));
 }

@@ -21,6 +21,21 @@ interface Props {
 
 type ParsedRow = Omit<Attendee, 'source'>;
 
+/**
+ * Parses a Bevy attendee export CSV into structured rows.
+ *
+ * Expected column order (0-indexed):
+ *   0: Order Number, 1: Ticket Number, 2: First Name, 3: Last Name,
+ *   4: Email, 5: Job Title, 6: Company, 7: Ticket Type
+ *
+ * Rows are skipped if they lack a ticket number or email, or if the email is
+ * the internal Bevy support address (`gdg-support@google.com`).
+ *
+ * Uses a hand-rolled RFC-4180 field parser instead of a library to avoid
+ * dependencies and to handle Bevy's specific quoting style reliably.
+ *
+ * @returns `{ rows }` — valid attendee rows ready to pass to `importBevyAttendees`.
+ */
 function parseCSV(text: string): { rows: ParsedRow[]; skippedRows: number } {
   const lines = text.split(/\r?\n/).filter((l) => l.trim());
   if (lines.length < 2) return { rows: [], skippedRows: 0 };
@@ -62,6 +77,9 @@ function parseCSV(text: string): { rows: ParsedRow[]; skippedRows: number } {
     const firstName = f[2]?.trim() ?? '';
     const lastName = f[3]?.trim() ?? '';
     const email = f[4]?.trim() ?? '';
+    const jobTitle = f[5]?.trim() ?? '';
+    const company = f[6]?.trim() ?? '';
+    const ticketType = f[7]?.trim() ?? '';
 
     // Skip rows without a ticket number or email
     if (!ticketNumber || !email) { skippedRows++; continue; }
@@ -74,12 +92,24 @@ function parseCSV(text: string): { rows: ParsedRow[]; skippedRows: number } {
       firstName: firstName || email.split('@')[0],
       lastName,
       email,
+      ...(jobTitle ? { jobTitle } : {}),
+      ...(company ? { company } : {}),
+      ...(ticketType ? { ticketType } : {}),
     });
   }
 
   return { rows, skippedRows };
 }
 
+/**
+ * Three-phase import flow for a Bevy attendee CSV:
+ *   1. **File selection** — hidden `<input type="file">` triggered by a styled button.
+ *   2. **Preview** — parsed rows shown in a table before committing.
+ *   3. **Result** — success banner with imported / skipped counts.
+ *
+ * Already-imported tickets are skipped server-side by `importBevyAttendees`,
+ * so re-uploading the same CSV is safe.
+ */
 export default function BevyImport({ eventId }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [parsed, setParsed] = useState<ParsedRow[] | null>(null);
