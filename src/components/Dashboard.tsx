@@ -33,6 +33,7 @@ import type { Attendee } from '../types';
 
 interface Props {
   eventId: string;
+  cloudCreditsUrl?: string;
 }
 
 /**
@@ -410,7 +411,7 @@ function QRDialog({ eventId, open, onClose }: { eventId: string; open: boolean; 
  * - `AddAttendeeDialog` — manual lookup + check-in / walk-in flow.
  * - `QRDialog`          — share the public check-in URL / kiosk display URL.
  */
-export default function Dashboard({ eventId }: Props) {
+export default function Dashboard({ eventId, cloudCreditsUrl }: Props) {
   const [attendees, setAttendees] = useState<Attendee[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -450,10 +451,10 @@ export default function Dashboard({ eventId }: Props) {
     .filter((a) => {
       const q = search.toLowerCase();
       return (
-        a.firstName.toLowerCase().includes(q) ||
-        a.lastName.toLowerCase().includes(q) ||
-        a.email.toLowerCase().includes(q) ||
-        a.ticketNumber.toLowerCase().includes(q)
+        (a.firstName ?? '').toLowerCase().includes(q) ||
+        (a.lastName ?? '').toLowerCase().includes(q) ||
+        (a.email ?? '').toLowerCase().includes(q) ||
+        (a.ticketNumber ?? '').toLowerCase().includes(q)
       );
     })
     .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
@@ -462,8 +463,8 @@ export default function Dashboard({ eventId }: Props) {
     <Box sx={{ maxWidth: 960, mx: 'auto', mt: 4, px: 2 }}>
       <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { sm: 'center' }, justifyContent: 'space-between', gap: 2, mb: 4 }}>
         <Box>
-          <Typography variant="h5" sx={{ fontWeight: 700 }}>Attendees</Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="h5" sx={{ fontWeight: 700, ml: 0.5 }}>Attendees</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ ml: 0.5 }}>
             {checkedInCount} / {attendees.length} checked in
           </Typography>
         </Box>
@@ -527,6 +528,7 @@ export default function Dashboard({ eventId }: Props) {
                 <TableCell>First Name</TableCell>
                 <TableCell>Last Name</TableCell>
                 <TableCell>Email</TableCell>
+                {cloudCreditsUrl && <TableCell>Cloud Credits</TableCell>}
                 <TableCell sx={{ width: 120 }} />
               </TableRow>
             </TableHead>
@@ -536,6 +538,15 @@ export default function Dashboard({ eventId }: Props) {
                   <TableCell>{a.firstName}</TableCell>
                   <TableCell>{a.lastName}</TableCell>
                   <TableCell sx={{ color: 'text.secondary' }}>{a.email}</TableCell>
+                  {cloudCreditsUrl && (
+                    <TableCell>
+                      {a.cloudCreditsClickedAt ? (
+                        <Chip label="Claimed" size="small" sx={{ bgcolor: 'secondary.light', color: 'secondary.dark', fontWeight: 600, fontSize: 11 }} />
+                      ) : (
+                        <Typography variant="body2" color="text.disabled" sx={{ fontSize: 12 }}>—</Typography>
+                      )}
+                    </TableCell>
+                  )}
                   <TableCell align="right">
                     {a.checkinDate ? (
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>

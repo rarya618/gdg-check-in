@@ -4,6 +4,8 @@ import Typography from '@mui/material/Typography';
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import GroupIcon from '@mui/icons-material/Group';
+import HowToRegIcon from '@mui/icons-material/HowToReg';
 
 import type { GDGEvent } from '../types';
 
@@ -49,11 +51,29 @@ export default function EventItem({ event, onSelect }: Props) {
             {event.description && (
               <Typography variant="body1" color="text.secondary" sx={{ mb: 2.5 }}>{event.description}</Typography>
             )}
-            <Typography variant="body2" color="text.disabled" sx={{ mb: 0.5 }}>
-              {new Date(event.date + 'T00:00:00').toLocaleDateString(undefined, {
-                weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
-              })}
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+              <Typography component="span" variant="body2" color="text.disabled">
+                {new Date(event.date + 'T00:00:00').toLocaleDateString(undefined, {
+                  weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
+                })}
+              </Typography>
+              {event.attendeeCount !== undefined && (
+                <>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <GroupIcon sx={{ fontSize: 15, color: 'text.disabled', display: 'block' }} />
+                    <Typography component="span" variant="caption" color="text.disabled">
+                      {event.attendeeCount} registered
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <HowToRegIcon sx={{ fontSize: 15, color: 'text.disabled', display: 'block' }} />
+                    <Typography component="span" variant="caption" color="text.disabled">
+                      {event.checkedInCount} checked in
+                    </Typography>
+                  </Box>
+                </>
+              )}
+            </Box>
           </Box>
           <ChevronRightIcon sx={{ color: 'text.disabled', flexShrink: 0, mt: 0.25 }} />
         </Box>

@@ -1,11 +1,12 @@
 {
-  "name": "gdgcheckin",
+  "name": "gdg-check-in",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "deploy": "firebase deploy --only hosting",
     "lint": "eslint .",
     "preview": "vite preview"
   },

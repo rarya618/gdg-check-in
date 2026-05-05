@@ -41,6 +41,7 @@ export default function EventSettings({ event, onEventUpdated, onDeleted }: Prop
     name: event.name,
     date: event.date,
     description: event.description ?? '',
+    cloudCreditsUrl: event.cloudCreditsUrl ?? '',
   });
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -69,8 +70,9 @@ export default function EventSettings({ event, onEventUpdated, onDeleted }: Prop
         name: form.name.trim(),
         date: form.date,
         description: form.description.trim(),
+        cloudCreditsUrl: form.cloudCreditsUrl.trim(),
       });
-      const updated = { ...event, name: form.name.trim(), date: form.date, description: form.description.trim() || undefined };
+      const updated = { ...event, name: form.name.trim(), date: form.date, description: form.description.trim() || undefined, cloudCreditsUrl: form.cloudCreditsUrl.trim() || undefined };
       onEventUpdated(updated);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2500);
@@ -131,6 +133,15 @@ export default function EventSettings({ event, onEventUpdated, onDeleted }: Prop
             rows={3}
             fullWidth
             helperText="Optional"
+          />
+          <TextField
+            name="cloudCreditsUrl"
+            label="Cloud Credits URL"
+            type="url"
+            value={form.cloudCreditsUrl}
+            onChange={handleChange}
+            fullWidth
+            helperText="Optional — shown as a button after attendees check in"
           />
           {saveError && <Alert severity="error" sx={{ borderRadius: 2 }}>{saveError}</Alert>}
           <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>

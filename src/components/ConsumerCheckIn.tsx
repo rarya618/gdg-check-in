@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ref, get } from 'firebase/database';
 import { db } from '../firebase';
-import { findAttendeeByEmail, markCheckedIn, checkInAttendee } from '../db';
+import { findAttendeeByEmail, markCheckedIn, checkInAttendee, markCloudCreditsClicked } from '../db';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
@@ -168,6 +168,20 @@ export default function ConsumerCheckIn({ eventId }: Props) {
               </Box>
             ))}
           </Box>
+          {event?.cloudCreditsUrl && (
+            <Button
+              variant="contained"
+              size="large"
+              fullWidth
+              onClick={() => {
+                markCloudCreditsClicked(eventId, success.email);
+                window.open(event.cloudCreditsUrl, '_blank', 'noopener,noreferrer');
+              }}
+              sx={{ mt: 1, borderRadius: 9999, py: 1.5, fontWeight: 700, bgcolor: '#4285F4', '&:hover': { bgcolor: '#3367D6' } }}
+            >
+              Get Cloud Credits
+            </Button>
+          )}
         </Paper>
       </Box>
     );
@@ -249,9 +263,25 @@ export default function ConsumerCheckIn({ eventId }: Props) {
             {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
 
             {mode === 'found-duplicate' && foundAttendee && (
-              <Alert severity="warning" sx={{ borderRadius: 2 }}>
-                You're already checked in as <strong>{foundAttendee.firstName} {foundAttendee.lastName}</strong>.
-              </Alert>
+              <>
+                <Alert severity="warning" sx={{ borderRadius: 2 }}>
+                  You're already checked in, <strong>{foundAttendee.firstName}</strong>.
+                </Alert>
+                {event?.cloudCreditsUrl && (
+                  <Button
+                    variant="contained"
+                    size="large"
+                    fullWidth
+                    onClick={() => {
+                      markCloudCreditsClicked(eventId, foundAttendee.email);
+                      window.open(event.cloudCreditsUrl, '_blank', 'noopener,noreferrer');
+                    }}
+                    sx={{ borderRadius: 9999, py: 1.5, fontWeight: 700, bgcolor: '#4285F4', '&:hover': { bgcolor: '#3367D6' } }}
+                  >
+                    Get Cloud Credits
+                  </Button>
+                )}
+              </>
             )}
 
             {/* Pre-registered */}

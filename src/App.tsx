@@ -115,7 +115,7 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
           >
             <AppLogo />
           </Box>
-          <IconButton onClick={() => setMobileOpen(false)} aria-label="Close menu" size="small" sx={{ color: 'text.secondary' }}>
+          <IconButton onClick={() => setMobileOpen(false)} aria-label="Close menu" size="small" sx={{ color: 'text.secondary', mt: -1 }}>
             <CloseIcon fontSize="small" />
           </IconButton>
         </Box>
@@ -250,9 +250,13 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
         aria-label="Open menu"
         sx={{
           display: { xs: 'flex', md: 'none' },
+          opacity: mobileOpen ? 0 : 1,
+          transform: mobileOpen ? 'scale(0.7)' : 'scale(1)',
+          pointerEvents: mobileOpen ? 'none' : 'auto',
+          transition: mobileOpen ? 'none' : 'opacity 0.4s ease, transform 0.4s ease',
           position: 'fixed',
-          top: 12,
-          left: 12,
+          top: 16,
+          left: 16,
           zIndex: (theme) => theme.zIndex.drawer + 1,
           color: 'text.primary',
           bgcolor: 'background.paper',
@@ -313,17 +317,17 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
           ml: { xs: 0, md: `${SIDEBAR_WIDTH}px` },
           flex: 1,
           pb: 8,
-          pt: 0,
+          pt: { xs: 4, md: 0 },
           minWidth: 0,
         }}
       >
         {view === 'event-detail' && activeEvent && (
-          <Box sx={{ px: { xs: 2, md: 3 }, pt: { xs: 2, md: 2 }, pb: 0 }}>
+          <Box sx={{ px: { xs: 2, md: 2 }, pt: { xs: 3, md: 3 }, pb: 0, mb: -4 }}>
             <Button
               onClick={() => handleNavClick(handleBack)}
               startIcon={<ArrowBackIcon fontSize="small" />}
               size="small"
-              sx={{ color: 'text.secondary', textTransform: 'none', fontWeight: 400, fontSize: 12, px: 1, ml: -1 }}
+              sx={{ color: 'text.secondary', textTransform: 'none', fontWeight: 400, fontSize: 12, px: 1, ml: -0.4, '& .MuiButton-startIcon': { mr: 0.6 } }}
             >
               Back to events
             </Button>
@@ -336,7 +340,7 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
           <CheckInForm eventId={activeEvent.id} onCheckedIn={() => setCheckedInCount(n => n + 1)} />
         )}
         {view === 'event-detail' && activeEvent && tab === 'dashboard' && (
-          <Dashboard eventId={activeEvent.id} />
+          <Dashboard eventId={activeEvent.id} cloudCreditsUrl={activeEvent.cloudCreditsUrl} />
         )}
         {view === 'event-detail' && activeEvent && tab === 'settings' && (
           <EventSettings

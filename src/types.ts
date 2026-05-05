@@ -14,6 +14,8 @@ export interface Attendee {
   email: string;
   /** ISO 8601 UTC timestamp set when the attendee is checked in. Absent means not yet checked in. */
   checkinDate?: string;
+  /** ISO 8601 UTC timestamp set when the attendee clicks the Cloud Credits button. */
+  cloudCreditsClickedAt?: string;
   /** 'bevy' = imported from Bevy CSV; 'walk-in' = added at the door. */
   source: 'bevy' | 'walk-in';
   jobTitle?: string;
@@ -67,6 +69,12 @@ export interface GDGEvent {
    * Using a Record rather than an array keeps Firebase RTDB updates atomic.
    */
   assignedTeams?: Record<string, true>;
+  /** Total number of registered attendees — injected by listenEvents, not stored in DB. */
+  attendeeCount?: number;
+  /** Number of attendees who have checked in — injected by listenEvents, not stored in DB. */
+  checkedInCount?: number;
+  /** Optional URL shown as a button on the check-in success screen (e.g. a Google Cloud Credits redemption link). */
+  cloudCreditsUrl?: string;
 }
 
 /**

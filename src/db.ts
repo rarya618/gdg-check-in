@@ -103,10 +103,19 @@ export function listenEvents(
     eventsRef,
     (snap) => {
       if (!snap.exists()) { callback([]); return; }
-      const data = snap.val() as Record<string, Omit<GDGEvent, 'id'>>;
+      const data = snap.val() as Record<string, any>;
       const events = Object.entries(data)
-      // @ts-ignore
-        .map(([id, val]) => ({ status: 'open' as EventStatus, ...val, id }))
+        .map(([id, val]) => {
+          const attendees = val.attendees ? Object.values(val.attendees) as Attendee[] : [];
+          const { attendees: _a, ticketCounter: _t, ...eventData } = val;
+          return {
+            status: 'open' as EventStatus,
+            ...eventData,
+            id,
+            attendeeCount: attendees.length,
+            checkedInCount: attendees.filter((a) => a.checkinDate).length,
+          } as GDGEvent;
+        })
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
       callback(events);
     },
@@ -142,16 +151,28 @@ export async function createEvent(
  */
 export async function updateEvent(
   eventId: string,
-  data: Partial<Pick<GDGEvent, 'name' | 'date' | 'description' | 'status'>>
+  data: Partial<Pick<GDGEvent, 'name' | 'date' | 'description' | 'status' | 'cloudCreditsUrl'>>
 ): Promise<void> {
   const updates: Record<string, unknown> = {};
   if (data.name !== undefined) updates.name = data.name;
   if (data.date !== undefined) updates.date = data.date;
   if (data.status !== undefined) updates.status = data.status;
   if (data.description !== undefined) {
-    updates.description = data.description || null; // null removes the field
+    updates.description = data.description || null;
+  }
+  if (data.cloudCreditsUrl !== undefined) {
+    updates.cloudCreditsUrl = data.cloudCreditsUrl || null;
   }
   await update(ref(db, `events/${eventId}`), updates);
+}
+
+/** Records the moment an attendee clicks the Cloud Credits button. */
+export async function markCloudCreditsClicked(eventId: string, email: string): Promise<void> {
+  const result = await findAttendeeByEmail(eventId, email);
+  if (!result) return;
+  await update(ref(db, `events/${eventId}/attendees/${result.key}`), {
+    cloudCreditsClickedAt: new Date().toISOString(),
+  });
 }
 
 /**
@@ -235,7 +256,7 @@ export async function findAttendeeByEmail(
   if (!snap.exists()) return null;
   const data = snap.val() as Record<string, Attendee>;
   const entry = Object.entries(data).find(
-    ([, a]) => a.email.toLowerCase() === email.toLowerCase()
+    ([, a]) => a.email?.toLowerCase() === email.toLowerCase()
   );
   if (!entry) return null;
   return { key: entry[0], attendee: entry[1] };
