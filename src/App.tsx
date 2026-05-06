@@ -26,6 +26,7 @@ import OrganisersPage from './components/OrganisersPage';
 import EventSettings from './components/EventSettings';
 import TeamsPage from './components/TeamsPage';
 import AppLogo from './components/AppLogo';
+import LuckyDraw from './components/LuckyDraw';
 
 import { listenEvents } from './db';
 import type { GDGEvent, AdminRole } from './types';
@@ -34,7 +35,7 @@ import type { User } from 'firebase/auth';
 /** Top-level navigation views available in the admin shell. */
 type View = 'events' | 'event-detail' | 'organisers' | 'teams';
 /** Tabs available when drilling into an event. */
-type EventTab = 'checkin' | 'dashboard' | 'settings';
+type EventTab = 'checkin' | 'dashboard' | 'settings' | 'draw';
 
 const SIDEBAR_WIDTH = 280;
 
@@ -178,7 +179,7 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
       <List disablePadding sx={{ flex: 1 }}>
         {view === 'event-detail' ? (
           <>
-            {(['dashboard', 'checkin', 'settings'] as EventTab[]).map((t) => (
+            {(['dashboard', 'checkin', 'draw', 'settings'] as EventTab[]).map((t) => (
               <ListItem key={t} disablePadding sx={{ mb: 0.5 }}>
                 <ListItemButton
                   selected={tab === t}
@@ -194,7 +195,7 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
                             <Chip label={checkedInCount} size="small" color="primary" sx={{ height: 18, fontSize: 11, '& .MuiChip-label': { px: 0.75 } }} />
                           )}
                         </Box>
-                      ) : t === 'checkin' ? 'Check In' : 'Settings'
+                      ) : t === 'checkin' ? 'Check In' : t === 'draw' ? 'Lucky Draw' : 'Settings'
                     }
                     slotProps={{ primary: { sx: { fontWeight: 700, fontSize: 14 } } }}
                   />
@@ -341,6 +342,9 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
         )}
         {view === 'event-detail' && activeEvent && tab === 'dashboard' && (
           <Dashboard eventId={activeEvent.id} cloudCreditsUrl={activeEvent.cloudCreditsUrl} />
+        )}
+        {view === 'event-detail' && activeEvent && tab === 'draw' && (
+          <LuckyDraw eventId={activeEvent.id} />
         )}
         {view === 'event-detail' && activeEvent && tab === 'settings' && (
           <EventSettings
