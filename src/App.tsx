@@ -195,7 +195,7 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
                             <Chip label={checkedInCount} size="small" color="primary" sx={{ height: 18, fontSize: 11, '& .MuiChip-label': { px: 0.75 } }} />
                           )}
                         </Box>
-                      ) : t === 'checkin' ? 'Check In' : t === 'draw' ? 'Lucky Draw' : 'Settings'
+                      ) : t === 'checkin' ? 'Check In' : t === 'draw' ? 'Merch Draw' : 'Settings'
                     }
                     slotProps={{ primary: { sx: { fontWeight: 700, fontSize: 14 } } }}
                   />

@@ -36,7 +36,7 @@ export default function LuckyDraw({ eventId }: Props) {
       <Paper elevation={1} sx={{ p: 4, borderRadius: 2, textAlign: 'center' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 1 }}>
           <CasinoOutlinedIcon sx={{ color: 'primary.main' }} />
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>Lucky Draw</Typography>
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>Merch Draw</Typography>
         </Box>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
           Pick a random winner from checked-in attendees.
