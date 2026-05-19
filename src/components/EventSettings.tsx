@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
@@ -13,6 +13,9 @@ import Checkbox from '@mui/material/Checkbox';
 import CheckIcon from '@mui/icons-material/Check';
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import DownloadIcon from '@mui/icons-material/Download';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import Tooltip from '@mui/material/Tooltip';
+import IconButton from '@mui/material/IconButton';
 import { updateEvent, deleteEvent, listenTeams, assignTeamToEvent, removeTeamFromEvent, getAttendees } from '../db';
 import type { GDGEvent, Team } from '../types';
 import BevyImport from './BevyImport';
@@ -50,8 +53,23 @@ export default function EventSettings({ event, onEventUpdated, onDeleted }: Prop
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [teams, setTeams] = useState<Team[]>([]);
+  const headerRef = useRef<HTMLDivElement>(null);
+  const titleRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => listenTeams(setTeams), []);
+
+  useEffect(() => {
+    const onScroll = () => {
+      const shrunk = window.scrollY > 10;
+      if (titleRef.current) titleRef.current.style.fontSize = shrunk ? '1.25rem' : '2.125rem';
+      if (headerRef.current) {
+        headerRef.current.style.borderBottom = shrunk ? '1px solid var(--mui-palette-divider, #e0e0e0)' : 'none';
+        headerRef.current.style.paddingTop = shrunk ? '10px' : '12px';
+      }
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
@@ -108,224 +126,243 @@ export default function EventSettings({ event, onEventUpdated, onDeleted }: Prop
   const isOpen = event.status === 'open';
 
   return (
-    <Box sx={{ maxWidth: 600, mx: 'auto', mt: 4, px: 2, pb: 8, display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+    <Box>
+      <Box ref={headerRef} sx={{ position: 'sticky', top: 0, zIndex: 10, bgcolor: 'background.default', px: { xs: 2, md: 4 }, pt: 1.5, pb: 1.25, transition: 'padding 0.25s ease', mb: 2 }}>
+        <Typography ref={titleRef} variant="h4" sx={{ fontWeight: 700, fontSize: '2.125rem', transition: 'font-size 0.25s ease' }}>Settings</Typography>
+      </Box>
+    <Box sx={{ px: { xs: 2, md: 4 }, pt: 0, pb: 8, display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2.5, alignItems: 'flex-start' }}>
 
-      {/* Event details */}
-      <Paper elevation={1} sx={{ p: 3, borderRadius: 2 }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 600 }} gutterBottom>Event details</Typography>
-        <Box component="form" onSubmit={handleSave} sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1.5 }}>
-          <TextField name="name" label="Event Name" value={form.name} onChange={handleChange} fullWidth />
-          <TextField
-            name="date"
-            label="Date"
-            type="date"
-            value={form.date}
-            onChange={handleChange}
-            fullWidth
-            slotProps={{ inputLabel: { shrink: true } }}
-          />
-          <TextField
-            name="description"
-            label="Description"
-            value={form.description}
-            onChange={handleChange}
-            multiline
-            rows={3}
-            fullWidth
-            helperText="Optional"
-          />
-          <TextField
-            name="cloudCreditsUrl"
-            label="Cloud Credits URL"
-            type="url"
-            value={form.cloudCreditsUrl}
-            onChange={handleChange}
-            fullWidth
-            helperText="Optional, shown as a button after attendees check in"
-          />
-          {saveError && <Alert severity="error" sx={{ borderRadius: 2 }}>{saveError}</Alert>}
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <Button
-              type="submit"
-              variant="contained"
-              disabled={saving}
-              startIcon={saveSuccess ? <CheckIcon /> : undefined}
-              color={saveSuccess ? 'success' : 'primary'}
-              sx={{ borderRadius: 9999, minWidth: 130, px: 2.5 }}
-            >
-              {saving ? 'Saving…' : saveSuccess ? 'Saved' : 'Save changes'}
-            </Button>
-          </Box>
-        </Box>
-      </Paper>
+      {/* Left column */}
+      <Box sx={{ flex: 1, width: { xs: '100%', md: 'auto' }, display: 'flex', flexDirection: 'column', gap: 2.5, minWidth: 0 }}>
 
-      {/* Check-in status */}
-      <Paper elevation={1} sx={{ p: 3, borderRadius: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2 }}>
-          <Box>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Check-in status</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              {isOpen
-                ? 'Check-ins are open. Attendees can register via the public link.'
-                : 'Check-ins are closed. The public form will show a closed message.'}
-            </Typography>
-            <Chip
-              label={isOpen ? 'Open' : 'Closed'}
-              size="small"
-              sx={{
-                mt: 2.5,
-                px: 0.5,
-                bgcolor: isOpen ? 'secondary.light' : 'grey.100',
-                color: isOpen ? 'secondary.main' : 'text.secondary',
-                '& .MuiChip-label': { px: 1 },
-              }}
+        {/* Event details */}
+        <Paper elevation={1} sx={{ p: 3, borderRadius: 2 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }} gutterBottom>Event details</Typography>
+          <Box component="form" onSubmit={handleSave} sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1.5 }}>
+            <TextField name="name" label="Event Name" value={form.name} onChange={handleChange} fullWidth />
+            <TextField
+              name="date"
+              label="Date"
+              type="date"
+              value={form.date}
+              onChange={handleChange}
+              fullWidth
+              slotProps={{ inputLabel: { shrink: true } }}
             />
-          </Box>
-          <FormControlLabel
-            control={
-              <Switch
-                checked={isOpen}
-                onChange={handleToggleStatus}
-                disabled={toggling}
-                color="primary"
-              />
-            }
-            label=""
-            sx={{ ml: 0, mr: 0 }}
-          />
-        </Box>
-      </Paper>
-
-      {/* Teams */}
-      <Paper elevation={1} sx={{ p: 3, borderRadius: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-          <GroupsOutlinedIcon fontSize="small" sx={{ color: 'text.secondary' }} />
-          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Teams</Typography>
-        </Box>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Assign teams responsible for running this event.
-        </Typography>
-        {teams.length === 0 ? (
-          <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-            No teams yet – create teams in the Organisers section.
-          </Typography>
-        ) : (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-            {teams.map((team) => {
-              const assigned = !!event.assignedTeams?.[team.id];
-              return (
-                <FormControlLabel
-                  key={team.id}
-                  control={
-                    <Checkbox
-                      checked={assigned}
-                      onChange={() =>
-                        assigned
-                          ? removeTeamFromEvent(event.id, team.id).then(() =>
-                              onEventUpdated({ ...event, assignedTeams: { ...event.assignedTeams, [team.id]: undefined as unknown as true } })
-                            )
-                          : assignTeamToEvent(event.id, team.id).then(() =>
-                              onEventUpdated({ ...event, assignedTeams: { ...event.assignedTeams, [team.id]: true } })
-                            )
-                      }
-                      size="small"
-                      color="primary"
-                    />
-                  }
-                  label={<Typography variant="body2" sx={{ fontWeight: 500 }}>{team.name}</Typography>}
-                  sx={{ ml: 0 }}
-                />
-              );
-            })}
-          </Box>
-        )}
-      </Paper>
-
-      {/* Export CSV */}
-      <Paper elevation={1} sx={{ p: 3, borderRadius: 2 }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 600 }} gutterBottom>Export attendees</Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Download checked-in attendees as a CSV.
-        </Typography>
-        <Button
-          variant="outlined"
-          startIcon={<DownloadIcon />}
-          onClick={async () => {
-            const attendees = (await getAttendees(event.id)).filter((a) => a.checkinDate);
-            const header = 'first_name,last_name,email,checked_in,job_title,company,ticket_type';
-            const rows = attendees.map((a) =>
-              [a.firstName, a.lastName, a.email, a.checkinDate ? 'true' : 'false', a.jobTitle ?? '', a.company ?? '', a.ticketType ?? '']
-                .map((v) => `"${String(v).replace(/"/g, '""')}"`)
-                .join(',')
-            );
-            const csv = [header, ...rows].join('\n');
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `attendees-${event.id}-${new Date().toISOString().slice(0, 10)}.csv`;
-            a.click();
-            URL.revokeObjectURL(url);
-          }}
-          sx={{ borderRadius: 9999, px: 2.5 }}
-        >
-          Export CSV
-        </Button>
-      </Paper>
-
-      {/* Bevy import */}
-      <Paper elevation={1} sx={{ p: 3, borderRadius: 2 }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 600 }} gutterBottom>Import from Bevy</Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Upload the attendee CSV exported from Bevy to pre-load the guest list. Already-imported tickets are skipped.
-        </Typography>
-        <BevyImport eventId={event.id} />
-      </Paper>
-
-      {/* Danger zone */}
-      <Paper elevation={1} sx={{ p: 3, borderRadius: 2, border: '1px solid', borderColor: 'error.light' }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 600 }} color="error.main" gutterBottom>Danger zone</Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Permanently delete this event and all its attendee data. This cannot be undone.
-        </Typography>
-
-        {!confirmDelete ? (
-          <Button
-            variant="outlined"
-            color="error"
-            onClick={() => setConfirmDelete(true)}
-            sx={{ borderRadius: 9999, px: 2.5, mt: 1.5 }}
-          >
-            Delete event
-          </Button>
-        ) : (
-          <Box>
-            <Divider sx={{ mb: 2 }} />
-            <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
-              Are you sure? This will permanently delete <strong>"{event.name}"</strong> and all check-in data.
-            </Alert>
-            <Box sx={{ display: 'flex', gap: 1.5 }}>
+            <TextField
+              name="description"
+              label="Description"
+              value={form.description}
+              onChange={handleChange}
+              multiline
+              rows={3}
+              fullWidth
+              helperText="Optional"
+            />
+            <TextField
+              name="cloudCreditsUrl"
+              label="Cloud Credits URL"
+              type="url"
+              value={form.cloudCreditsUrl}
+              onChange={handleChange}
+              fullWidth
+              helperText="Optional, shown as a button after attendees check in"
+            />
+            {saveError && <Alert severity="error" sx={{ borderRadius: 2 }}>{saveError}</Alert>}
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
               <Button
+                type="submit"
                 variant="contained"
-                color="error"
-                onClick={handleDelete}
-                disabled={deleting}
-                sx={{ borderRadius: 9999, px: 2.5 }}
+                disabled={saving}
+                startIcon={saveSuccess ? <CheckIcon /> : undefined}
+                color={saveSuccess ? 'success' : 'primary'}
+                sx={{ borderRadius: 9999, minWidth: 130, px: 2.5 }}
               >
-                {deleting ? 'Deleting…' : 'Yes, delete event'}
-              </Button>
-              <Button
-                variant="outlined"
-                color="inherit"
-                onClick={() => setConfirmDelete(false)}
-                sx={{ borderColor: 'divider', color: 'text.secondary', borderRadius: 9999, px: 2.5 }}
-              >
-                Cancel
+                {saving ? 'Saving…' : saveSuccess ? 'Saved' : 'Save changes'}
               </Button>
             </Box>
           </Box>
-        )}
-      </Paper>
+        </Paper>
+
+        {/* Danger zone */}
+        <Paper elevation={1} sx={{ p: 3, borderRadius: 2, border: '1px solid', borderColor: 'error.light' }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }} color="error.main" gutterBottom>Danger zone</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Permanently delete this event and all its attendee data. This cannot be undone.
+          </Typography>
+          {!confirmDelete ? (
+            <Button
+              variant="outlined"
+              color="error"
+              onClick={() => setConfirmDelete(true)}
+              sx={{ borderRadius: 9999, px: 2.5, mt: 1.5 }}
+            >
+              Delete event
+            </Button>
+          ) : (
+            <Box>
+              <Divider sx={{ mb: 2 }} />
+              <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
+                Are you sure? This will permanently delete <strong>"{event.name}"</strong> and all check-in data.
+              </Alert>
+              <Box sx={{ display: 'flex', gap: 1.5 }}>
+                <Button variant="contained" color="error" onClick={handleDelete} disabled={deleting} sx={{ borderRadius: 9999, px: 2.5 }}>
+                  {deleting ? 'Deleting…' : 'Yes, delete event'}
+                </Button>
+                <Button variant="outlined" color="inherit" onClick={() => setConfirmDelete(false)} sx={{ borderColor: 'divider', color: 'text.secondary', borderRadius: 9999, px: 2.5 }}>
+                  Cancel
+                </Button>
+              </Box>
+            </Box>
+          )}
+        </Paper>
+
+      </Box>
+
+      {/* Right column */}
+      <Box sx={{ flex: 1, width: { xs: '100%', md: 'auto' }, display: 'flex', flexDirection: 'column', gap: 2.5, minWidth: 0 }}>
+
+        {/* Check-in status */}
+        <Paper elevation={1} sx={{ p: 3, borderRadius: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2 }}>
+            <Box>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Check-in status</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                {isOpen
+                  ? 'Check-ins are open. Attendees can register via the public link.'
+                  : 'Check-ins are closed. The public form will show a closed message.'}
+              </Typography>
+              <Chip
+                label={isOpen ? 'Open' : 'Closed'}
+                size="small"
+                sx={{
+                  mt: 2.5,
+                  px: 0.5,
+                  bgcolor: isOpen ? 'secondary.light' : 'grey.100',
+                  color: isOpen ? 'secondary.main' : 'text.secondary',
+                  '& .MuiChip-label': { px: 1 },
+                }}
+              />
+            </Box>
+            <FormControlLabel
+              control={<Switch checked={isOpen} onChange={handleToggleStatus} disabled={toggling} color="primary" />}
+              label=""
+              sx={{ ml: 0, mr: 0 }}
+            />
+          </Box>
+        </Paper>
+
+        {/* Teams */}
+        <Paper elevation={1} sx={{ p: 3, borderRadius: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+            <GroupsOutlinedIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Teams</Typography>
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Assign teams responsible for running this event.
+          </Typography>
+          {teams.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+              No teams yet – create teams in the Organisers section.
+            </Typography>
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+              {teams.map((team) => {
+                const assigned = !!event.assignedTeams?.[team.id];
+                return (
+                  <FormControlLabel
+                    key={team.id}
+                    control={
+                      <Checkbox
+                        checked={assigned}
+                        onChange={() =>
+                          assigned
+                            ? removeTeamFromEvent(event.id, team.id).then(() =>
+                                onEventUpdated({ ...event, assignedTeams: { ...event.assignedTeams, [team.id]: undefined as unknown as true } })
+                              )
+                            : assignTeamToEvent(event.id, team.id).then(() =>
+                                onEventUpdated({ ...event, assignedTeams: { ...event.assignedTeams, [team.id]: true } })
+                              )
+                        }
+                        size="small"
+                        color="primary"
+                      />
+                    }
+                    label={<Typography variant="body2" sx={{ fontWeight: 500 }}>{team.name}</Typography>}
+                    sx={{ ml: 0 }}
+                  />
+                );
+              })}
+            </Box>
+          )}
+        </Paper>
+
+        {/* Export CSV */}
+        <Paper elevation={1} sx={{ p: 3, borderRadius: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Export attendees</Typography>
+            <Tooltip
+              title="Downloads a CSV of all checked-in attendees in a format compatible with Bevy. To sync back to Bevy, go to your event page and select Registrations. Use Bulk Upload to add the exported data."
+              placement="top"
+              arrow
+            >
+              <IconButton size="small" sx={{ color: 'text.disabled', '&:hover': { color: 'text.secondary' } }}>
+                <InfoOutlinedIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Download checked-in attendees as a CSV.
+          </Typography>
+          <Button
+            variant="outlined"
+            startIcon={<DownloadIcon />}
+            onClick={async () => {
+              const attendees = (await getAttendees(event.id)).filter((a) => a.checkinDate);
+              const header = 'first_name,last_name,email,checked_in,job_title,company,ticket_type';
+              const rows = attendees.map((a) =>
+                [a.firstName, a.lastName, a.email, a.checkinDate ? 'true' : 'false', a.jobTitle ?? '', a.company ?? '', a.ticketType ?? '']
+                  .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+                  .join(',')
+              );
+              const csv = [header, ...rows].join('\n');
+              const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `attendees-${event.id}-${new Date().toISOString().slice(0, 10)}.csv`;
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+            sx={{ borderRadius: 9999, px: 2.5 }}
+          >
+            Export CSV
+          </Button>
+        </Paper>
+
+        {/* Bevy import */}
+        <Paper elevation={1} sx={{ p: 3, borderRadius: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Import from Bevy</Typography>
+            <Tooltip
+              title="In your Bevy dashboard, go to your event. In the Registrations tab, click Download and select Download CSV. Upload the CSV as is and the app will do the rest."
+              placement="top"
+              arrow
+            >
+              <IconButton size="small" sx={{ color: 'text.disabled', '&:hover': { color: 'text.secondary' } }}>
+                <InfoOutlinedIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Upload the attendee CSV exported from Bevy to pre-load the guest list. Already-imported tickets are skipped.
+          </Typography>
+          <BevyImport eventId={event.id} />
+        </Paper>
+
+      </Box>
+
+    </Box>
     </Box>
   );
 }
