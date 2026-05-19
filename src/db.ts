@@ -69,13 +69,20 @@ export function listenAdmins(callback: (admins: Admin[]) => void): () => void {
 }
 
 /** Creates or overwrites an admin record. Overwrites silently if the email already exists. */
-export async function addAdmin(email: string, role: AdminRole): Promise<void> {
+export async function addAdmin(email: string, role: AdminRole, teamId?: string): Promise<void> {
   const key = emailToKey(email);
-  await set(ref(db, `admins/${key}`), {
+  const payload: Record<string, unknown> = {
     email: email.toLowerCase(),
     role,
     addedAt: new Date().toISOString(),
-  });
+  };
+  if (teamId) payload.teamId = teamId;
+  await set(ref(db, `admins/${key}`), payload);
+}
+
+/** Updates only the `teamId` field for an existing admin. */
+export async function updateAdminTeam(email: string, teamId: string): Promise<void> {
+  await set(ref(db, `admins/${emailToKey(email)}/teamId`), teamId);
 }
 
 /** Permanently removes an admin. No-op if the email does not exist. */
@@ -96,7 +103,8 @@ export async function updateAdminRole(email: string, role: AdminRole): Promise<v
  */
 export function listenEvents(
   callback: (events: GDGEvent[]) => void,
-  onError?: (err: Error) => void
+  onError?: (err: Error) => void,
+  teamId?: string
 ): () => void {
   const eventsRef = ref(db, 'events');
   const unsub = onValue(
@@ -116,6 +124,7 @@ export function listenEvents(
             checkedInCount: attendees.filter((a) => a.checkinDate).length,
           } as GDGEvent;
         })
+        .filter((e) => !teamId || e.assignedTeams?.[teamId] === true)
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
       callback(events);
     },
@@ -391,6 +400,23 @@ export async function createTeam(name: string): Promise<string> {
   const newRef = push(ref(db, 'teams'));
   await set(newRef, { name, createdAt: new Date().toISOString() });
   return newRef.key!;
+}
+
+/**
+ * Subscribes to a single team in real time.
+ * @returns Unsubscribe function — call in a useEffect cleanup.
+ */
+export function listenTeam(teamId: string, callback: (team: Team | null) => void): () => void {
+  const teamRef = ref(db, `teams/${teamId}`);
+  return onValue(teamRef, (snap) => {
+    if (!snap.exists()) { callback(null); return; }
+    callback({ ...snap.val(), id: teamId } as Team);
+  });
+}
+
+/** Sets or clears the globalAccess flag on a team. */
+export async function setTeamGlobalAccess(teamId: string, value: boolean): Promise<void> {
+  await set(ref(db, `teams/${teamId}/globalAccess`), value || null);
 }
 
 /** Permanently deletes a team node and all its members. */

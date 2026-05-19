@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import List from '@mui/material/List';
 import ListItem from '@mui/material/ListItem';
 import ListItemButton from '@mui/material/ListItemButton';
@@ -28,7 +28,7 @@ import TeamsPage from './components/TeamsPage';
 import AppLogo from './components/AppLogo';
 import LuckyDraw from './components/LuckyDraw';
 
-import { listenEvents } from './db';
+import { listenEvents, listenTeam } from './db';
 import type { GDGEvent, AdminRole } from './types';
 import type { User } from 'firebase/auth';
 
@@ -55,23 +55,28 @@ const isQRDisplay = consumerEventId && searchParams.get('display') === 'qr';
  * navigating away from an event and back doesn't re-mount the event components.
  *
  * Role-based nav visibility:
- * - superadmin  → Events, Organisers, Teams
- * - organiser   → Events, Teams
- * - team_member → Teams only
+ * - superadmin  → Events, Organisers, Teams (all events)
+ * - organiser   → Events, Organisers (team-scoped events; team-scoped organiser management)
+ * - team_member → Events only (team-scoped; check-in tab only inside events)
  */
-// @ts-ignore
-function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSignOut: () => void }) {
-  const [view, setView] = useState<View>(role === 'team_member' ? 'teams' : 'events');
+function AdminApp({ user, role, teamId, onSignOut }: { user: User; role: AdminRole; teamId: string | undefined; onSignOut: () => void }) {
+  const [view, setView] = useState<View>('events');
   const [showCreate, setShowCreate] = useState(false);
   const [activeEvent, setActiveEvent] = useState<GDGEvent | null>(null);
   const [tab, setTab] = useState<EventTab>('checkin');
   const [checkedInCount, setCheckedInCount] = useState(0);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [teamGlobalAccess, setTeamGlobalAccess] = useState(false);
 
-  /** Drills into an event, defaulting to the Dashboard tab and resetting the checked-in badge. */
+  useEffect(() => {
+    if (!teamId) return;
+    return listenTeam(teamId, (t) => setTeamGlobalAccess(!!t?.globalAccess));
+  }, [teamId]);
+
+  /** Drills into an event. team_member lands on check-in tab; others get dashboard. */
   function handleSelectEvent(event: GDGEvent) {
     setActiveEvent(event);
-    setTab('dashboard');
+    setTab(role === 'team_member' ? 'checkin' : 'dashboard');
     setCheckedInCount(0);
     setView('event-detail');
   }
@@ -86,7 +91,7 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
     const unsub = listenEvents((events) => {
       const found = events.find((e) => e.id === eventId);
       if (found) { unsub(); handleSelectEvent(found); }
-    });
+    }, undefined, isTeamMember || isOrganiser ? (teamGlobalAccess ? undefined : teamId) : undefined);
   }
 
   function handleBack() {
@@ -100,6 +105,7 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
   }
 
   const isSuperAdmin = role === 'superadmin';
+  const isOrganiser = role === 'organiser';
   const isTeamMember = role === 'team_member';
   const isOpen = activeEvent?.status === 'open';
 
@@ -179,7 +185,10 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
       <List disablePadding sx={{ flex: 1 }}>
         {view === 'event-detail' ? (
           <>
-            {(['dashboard', 'checkin', 'draw', 'settings'] as EventTab[]).map((t) => (
+            {(isTeamMember
+              ? (['checkin'] as EventTab[])
+              : (['dashboard', 'checkin', 'draw', 'settings'] as EventTab[])
+            ).map((t) => (
               <ListItem key={t} disablePadding sx={{ mb: 0.5 }}>
                 <ListItemButton
                   selected={tab === t}
@@ -207,9 +216,9 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
           <>
             {(isSuperAdmin
               ? (['events', 'organisers', 'teams'] as View[])
-              : isTeamMember
-              ? (['teams'] as View[])
-              : (['events', 'teams'] as View[])
+              : isOrganiser
+              ? (['events', 'organisers'] as View[])
+              : (['events'] as View[])
             ).map((v) => (
               <ListItem key={v} disablePadding sx={{ mb: 0.5 }}>
                 <ListItemButton
@@ -323,7 +332,7 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
         }}
       >
         {view === 'event-detail' && activeEvent && (
-          <Box sx={{ px: { xs: 2, md: 2 }, pt: { xs: 3, md: 3 }, pb: 0, mb: -4 }}>
+          <Box sx={{ px: 4, pt: { xs: 3, md: 3 }, pb: 0 }}>
             <Button
               onClick={() => handleNavClick(handleBack)}
               startIcon={<ArrowBackIcon fontSize="small" />}
@@ -335,7 +344,7 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
           </Box>
         )}
         {view === 'events' && (
-          <EventsList onSelect={handleSelectEvent} onCreateNew={() => setShowCreate(true)} />
+          <EventsList onSelect={handleSelectEvent} onCreateNew={() => setShowCreate(true)} teamId={isTeamMember || isOrganiser ? (teamGlobalAccess ? undefined : teamId) : undefined} canCreate={!isTeamMember} />
         )}
         {view === 'event-detail' && activeEvent && tab === 'checkin' && (
           <CheckInForm eventId={activeEvent.id} onCheckedIn={() => setCheckedInCount(n => n + 1)} />
@@ -353,7 +362,9 @@ function AdminApp({ user, role, onSignOut }: { user: User; role: AdminRole; onSi
             onDeleted={handleBack}
           />
         )}
-        {view === 'organisers' && isSuperAdmin && <OrganisersPage />}
+        {view === 'organisers' && (isSuperAdmin || isOrganiser) && (
+          <OrganisersPage userRole={role} userEmail={user.email!} userTeamId={teamId} />
+        )}
         {view === 'teams' && <TeamsPage userEmail={user.email!} isSuperAdmin={isSuperAdmin} canEdit={role !== 'team_member'} />}
       </Box>
 
@@ -379,7 +390,7 @@ export default function App() {
   }
   return (
     <AuthGate>
-      {(user, role, onSignOut) => <AdminApp user={user} role={role} onSignOut={onSignOut} />}
+      {(user, role, teamId, onSignOut) => <AdminApp user={user} role={role} teamId={teamId} onSignOut={onSignOut} />}
     </AuthGate>
   );
 }

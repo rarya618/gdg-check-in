@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
@@ -15,9 +15,11 @@ import EventItem from './EventItem';
 interface Props {
   onSelect: (event: GDGEvent) => void;
   onCreateNew: () => void;
+  teamId?: string;
+  canCreate?: boolean;
 }
 
-export default function EventsList({ onSelect, onCreateNew }: Props) {
+export default function EventsList({ onSelect, onCreateNew, teamId, canCreate = true }: Props) {
   const [events, setEvents] = useState<GDGEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState('');
@@ -25,30 +27,49 @@ export default function EventsList({ onSelect, onCreateNew }: Props) {
   useEffect(() => {
     const unsub = listenEvents(
       (data) => { setEvents(data); setLoading(false); },
-      (err) => { setDbError(err.message); setLoading(false); }
+      (err) => { setDbError(err.message); setLoading(false); },
+      teamId
     );
     return unsub;
+  }, [teamId]);
+
+  const titleRef = useRef<HTMLSpanElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onScroll = () => {
+      const shrunk = window.scrollY > 10;
+      if (titleRef.current) titleRef.current.style.fontSize = shrunk ? '1.25rem' : '2.125rem';
+      if (headerRef.current) {
+        headerRef.current.style.borderBottom = shrunk ? '1px solid var(--mui-palette-divider, #e0e0e0)' : 'none';
+        headerRef.current.style.paddingTop = shrunk ? '10px' : '32px';
+      }
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
   return (
-    <Box sx={{ maxWidth: 800, mx: 'auto', mt: 4, px: 2 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 4 }}>
+    <Box>
+      <Box ref={headerRef} sx={{ position: 'sticky', top: 0, zIndex: 10, bgcolor: 'background.default', px: 4, pt: 4, pb: 1.25, transition: 'padding 0.25s ease', display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
         <Box>
-          <Typography variant="h5" sx={{ fontWeight: 700 }}>Events</Typography>
-          <Typography variant="body1" color="text.secondary" sx={{ mt: 0.25 }}>
+          <Typography ref={titleRef} variant="h4" sx={{ fontWeight: 700, fontSize: '2.125rem', transition: 'font-size 0.25s ease' }}>Events</Typography>
+          <Typography variant="body2" color="text.secondary">
             Select an event to manage check-ins
           </Typography>
         </Box>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon sx={{ fontWeight: 700 }} />}
-          onClick={onCreateNew}
-          sx={{ fontWeight: 700, borderRadius: 9999, px: 2.5 }}
-        >
-          Create Event
-        </Button>
+        {canCreate && (
+          <Button
+            variant="contained"
+            startIcon={<AddIcon sx={{ fontWeight: 700 }} />}
+            onClick={onCreateNew}
+            sx={{ fontWeight: 700, borderRadius: 9999, px: 2.5 }}
+          >
+            Create Event
+          </Button>
+        )}
       </Box>
 
+      <Box sx={{ px: 4, pb: 4 }}>
       {loading ? (
         <Box sx={{ textAlign: 'center', py: 12 }}>
           <CircularProgress color="primary" size={32} />
@@ -80,12 +101,13 @@ export default function EventsList({ onSelect, onCreateNew }: Props) {
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Create your first event to get started.</Typography>
         </Box>
       ) : (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' }, gap: 1.5 }}>
           {events.map((event) => (
             <EventItem key={event.id} event={event} onSelect={onSelect} />
           ))}
         </Box>
       )}
+      </Box>
     </Box>
   );
 }

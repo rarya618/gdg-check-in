@@ -259,7 +259,7 @@ function AddAttendeeDialog({ eventId, open, onClose }: { eventId: string; open: 
             {/* Walk-in form */}
             {mode === 'walk-in' && (
               <>
-                <Alert severity="info" sx={{ borderRadius: 2 }}>Not pre-registered — walk-in</Alert>
+                <Alert severity="info" sx={{ borderRadius: 2 }}>Not pre-registered, checking in as walk-in</Alert>
                 <Box component="form" onSubmit={handleWalkIn} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
                     <TextField
@@ -447,6 +447,18 @@ export default function Dashboard({ eventId, cloudCreditsUrl }: Props) {
 
   const checkedInCount = attendees.filter((a) => !!a.checkinDate).length;
 
+  const titleRef = useRef<HTMLSpanElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onScroll = () => {
+      const shrunk = window.scrollY > 10;
+      if (titleRef.current) titleRef.current.style.fontSize = shrunk ? '1.25rem' : '2.125rem';
+      if (headerRef.current) headerRef.current.style.borderBottom = shrunk ? '1px solid var(--mui-palette-divider, #e0e0e0)' : 'none';
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
   const filtered = attendees
     .filter((a) => {
       const q = search.toLowerCase();
@@ -460,10 +472,10 @@ export default function Dashboard({ eventId, cloudCreditsUrl }: Props) {
     .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
 
   return (
-    <Box sx={{ maxWidth: 960, mx: 'auto', mt: 4, px: 2 }}>
-      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { sm: 'center' }, justifyContent: 'space-between', gap: 2, mb: 4 }}>
+    <Box>
+      <Box ref={headerRef} sx={{ position: 'sticky', top: 0, zIndex: 10, bgcolor: 'background.default', px: 4, pt: 1.25, pb: 1.25, display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { sm: 'center' }, justifyContent: 'space-between', gap: 2, mb: 2 }}>
         <Box>
-          <Typography variant="h5" sx={{ fontWeight: 700, ml: 0.5 }}>Attendees</Typography>
+          <Typography ref={titleRef} variant="h4" sx={{ fontWeight: 700, ml: 0.5, fontSize: '2.125rem', transition: 'font-size 0.25s ease' }}>Attendees</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ ml: 0.5 }}>
             {checkedInCount} / {attendees.length} checked in
           </Typography>
@@ -504,6 +516,7 @@ export default function Dashboard({ eventId, cloudCreditsUrl }: Props) {
         </Box>
       </Box>
 
+      <Box sx={{ px: 4 }}>
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 12 }}>
           <CircularProgress />
@@ -543,7 +556,7 @@ export default function Dashboard({ eventId, cloudCreditsUrl }: Props) {
                       {a.cloudCreditsClickedAt ? (
                         <Chip label="Claimed" size="small" sx={{ bgcolor: 'secondary.light', color: 'secondary.dark', fontWeight: 600, fontSize: 11 }} />
                       ) : (
-                        <Typography variant="body2" color="text.disabled" sx={{ fontSize: 12 }}>—</Typography>
+                        <Typography variant="body2" color="text.disabled" sx={{ fontSize: 12 }}>Not claimed</Typography>
                       )}
                     </TableCell>
                   )}
@@ -582,6 +595,7 @@ export default function Dashboard({ eventId, cloudCreditsUrl }: Props) {
 
       <AddAttendeeDialog eventId={eventId} open={addOpen} onClose={() => setAddOpen(false)} />
       <QRDialog eventId={eventId} open={qrOpen} onClose={() => setQrOpen(false)} />
+      </Box>
     </Box>
   );
 }

@@ -17,6 +17,7 @@ export default function LuckyDraw({ eventId }: Props) {
   const [checkedIn, setCheckedIn] = useState<Attendee[]>([]);
   const [winner, setWinner] = useState<Attendee | null>(null);
   const [hasDrawn, setHasDrawn] = useState(false);
+  const [drawnTickets, setDrawnTickets] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     return listenAttendees(eventId, (all) => {
@@ -24,11 +25,21 @@ export default function LuckyDraw({ eventId }: Props) {
     });
   }, [eventId]);
 
+  const pool = checkedIn.filter((a) => !drawnTickets.has(a.ticketNumber));
+
   function draw() {
-    if (checkedIn.length === 0) return;
-    const idx = Math.floor(Math.random() * checkedIn.length);
-    setWinner(checkedIn[idx]);
+    if (pool.length === 0) return;
+    const idx = Math.floor(Math.random() * pool.length);
+    const picked = pool[idx];
+    setWinner(picked);
     setHasDrawn(true);
+    setDrawnTickets((prev) => new Set(prev).add(picked.ticketNumber));
+  }
+
+  function reset() {
+    setDrawnTickets(new Set());
+    setWinner(null);
+    setHasDrawn(false);
   }
 
   return (
@@ -42,12 +53,22 @@ export default function LuckyDraw({ eventId }: Props) {
           Pick a random winner from checked-in attendees.
         </Typography>
 
-        <Chip
-          label={`${checkedIn.length} checked in`}
-          size="small"
-          color={checkedIn.length > 0 ? 'primary' : 'default'}
-          sx={{ mb: 4, fontWeight: 600 }}
-        />
+        <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', mb: 4 }}>
+          <Chip
+            label={`${checkedIn.length} checked in`}
+            size="small"
+            color={checkedIn.length > 0 ? 'primary' : 'default'}
+            sx={{ fontWeight: 600 }}
+          />
+          {drawnTickets.size > 0 && (
+            <Chip
+              label={`${drawnTickets.size} already won`}
+              size="small"
+              color="default"
+              sx={{ fontWeight: 600 }}
+            />
+          )}
+        </Box>
 
         {hasDrawn && winner ? (
           <Box
@@ -76,7 +97,7 @@ export default function LuckyDraw({ eventId }: Props) {
         ) : (
           <Box sx={{ height: 148, mb: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Typography variant="body2" color="text.disabled">
-              {checkedIn.length === 0 ? 'No one is checked in yet.' : 'Press Draw to pick a winner.'}
+              {checkedIn.length === 0 ? 'No one is checked in yet.' : pool.length === 0 ? 'Everyone has been drawn. Reset to start over.' : 'Press Draw to pick a winner.'}
             </Typography>
           </Box>
         )}
@@ -88,22 +109,32 @@ export default function LuckyDraw({ eventId }: Props) {
               size="large"
               startIcon={<CasinoOutlinedIcon />}
               onClick={draw}
-              disabled={checkedIn.length === 0}
+              disabled={pool.length === 0}
               sx={{ borderRadius: 9999, px: 4, fontWeight: 700 }}
             >
               Draw
             </Button>
           ) : (
-            <Button
-              variant="outlined"
-              size="large"
-              startIcon={<ReplayIcon />}
-              onClick={draw}
-              disabled={checkedIn.length === 0}
-              sx={{ borderRadius: 9999, px: 4, fontWeight: 700 }}
-            >
-              Redraw
-            </Button>
+            <>
+              <Button
+                variant="outlined"
+                size="large"
+                startIcon={<ReplayIcon />}
+                onClick={draw}
+                disabled={pool.length === 0}
+                sx={{ borderRadius: 9999, px: 4, fontWeight: 700 }}
+              >
+                Draw Next
+              </Button>
+              <Button
+                variant="text"
+                size="large"
+                onClick={reset}
+                sx={{ borderRadius: 9999, px: 3, fontWeight: 700, color: 'text.secondary' }}
+              >
+                Reset
+              </Button>
+            </>
           )}
         </Box>
       </Paper>

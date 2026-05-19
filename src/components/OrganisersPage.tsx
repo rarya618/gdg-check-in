@@ -16,19 +16,37 @@ import TableCell from '@mui/material/TableCell';
 import TableContainer from '@mui/material/TableContainer';
 import Chip from '@mui/material/Chip';
 import Alert from '@mui/material/Alert';
-import { listenAdmins, addAdmin, removeAdmin, updateAdminRole } from '../db';
-import type { Admin, AdminRole } from '../types';
+import { listenAdmins, addAdmin, removeAdmin, updateAdminRole, updateAdminTeam, addTeamMember, removeTeamMember, listenTeams } from '../db';
+import type { Admin, AdminRole, Team } from '../types';
 
-const SUPERADMIN_EMAIL = 'russalarya@gmail.com';
+interface Props {
+  userRole: AdminRole;
+  userEmail: string;
+  userTeamId?: string;
+}
 
-export default function OrganisersPage() {
+export default function OrganisersPage({ userRole, userEmail, userTeamId }: Props) {
   const [admins, setAdmins] = useState<Admin[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<AdminRole>('team_member');
+  const [newTeamId, setNewTeamId] = useState('');
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState('');
 
+  const isSuperAdmin = userRole === 'superadmin';
+
   useEffect(() => { return listenAdmins(setAdmins); }, []);
+  useEffect(() => { return listenTeams(setTeams); }, []);
+
+  const visibleAdmins = isSuperAdmin
+    ? admins
+    : admins.filter((a) => a.teamId === userTeamId);
+
+  function teamName(teamId?: string) {
+    if (!teamId) return null;
+    return teams.find((t) => t.id === teamId)?.name ?? teamId;
+  }
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -36,12 +54,16 @@ export default function OrganisersPage() {
     if (!trimmed) { setError('Email is required.'); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) { setError('Enter a valid email.'); return; }
     if (admins.some((a) => a.email === trimmed)) { setError('This person is already listed.'); return; }
+    const assignedTeam = isSuperAdmin ? newTeamId || undefined : userTeamId;
+    if (!isSuperAdmin && !assignedTeam) { setError('No team assigned to your account.'); return; }
     setAdding(true);
     setError('');
     try {
-      await addAdmin(trimmed, role);
+      await addAdmin(trimmed, role, assignedTeam);
+      if (assignedTeam) await addTeamMember(assignedTeam, trimmed);
       setEmail('');
-      setRole('organiser');
+      setRole('team_member');
+      setNewTeamId('');
     } catch {
       setError('Failed to add organiser.');
     }
@@ -49,21 +71,28 @@ export default function OrganisersPage() {
   }
 
   async function handleRemove(admin: Admin) {
-    if (admin.email === SUPERADMIN_EMAIL) return;
+    if (admin.email === userEmail) return;
+    if (admin.teamId) await removeTeamMember(admin.teamId, admin.email);
     await removeAdmin(admin.email);
   }
 
   async function handleRoleChange(admin: Admin, newRole: AdminRole) {
-    if (admin.email === SUPERADMIN_EMAIL) return;
+    if (admin.email === userEmail) return;
     await updateAdminRole(admin.email, newRole);
   }
 
+  async function handleTeamChange(admin: Admin, tid: string) {
+    if (admin.teamId) await removeTeamMember(admin.teamId, admin.email);
+    await updateAdminTeam(admin.email, tid);
+    await addTeamMember(tid, admin.email);
+  }
+
   return (
-    <Box sx={{ maxWidth: 800, mx: 'auto', mt: 4, px: 2 }}>
+    <Box sx={{ mt: 4, px: 4 }}>
       <Box sx={{ mb: 4 }}>
         <Typography variant="h5" sx={{ fontWeight: 700 }}>Organisers</Typography>
         <Typography variant="body1" color="text.secondary" sx={{ mt: 0.25 }}>
-          Manage who can access the admin panel.
+          {isSuperAdmin ? 'Manage who can access the admin panel.' : 'Manage your team members.'}
         </Typography>
       </Box>
 
@@ -88,9 +117,26 @@ export default function OrganisersPage() {
             >
               <MenuItem value="team_member">Check-in Only</MenuItem>
               <MenuItem value="organiser">Organiser</MenuItem>
-              <MenuItem value="superadmin">Super Admin</MenuItem>
+              {isSuperAdmin && <MenuItem value="superadmin">Super Admin</MenuItem>}
             </Select>
           </FormControl>
+          {isSuperAdmin && (
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <InputLabel shrink>Team</InputLabel>
+              <Select
+                value={newTeamId}
+                label="Team"
+                notched
+                onChange={(e) => setNewTeamId(e.target.value)}
+                displayEmpty
+              >
+                <MenuItem value="">(none)</MenuItem>
+                {teams.map((t) => (
+                  <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
           <Button
             type="submit"
             variant="contained"
@@ -100,11 +146,16 @@ export default function OrganisersPage() {
             {adding ? 'Adding…' : 'Add'}
           </Button>
         </Box>
+        {!isSuperAdmin && userTeamId && (
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            New members will be added to your team: <strong>{teamName(userTeamId)}</strong>
+          </Typography>
+        )}
         {error && <Alert severity="error" sx={{ mt: 1.5, borderRadius: 2 }}>{error}</Alert>}
       </Paper>
 
       <TableContainer component={Paper} elevation={1} sx={{ borderRadius: 2 }}>
-        {admins.length === 0 ? (
+        {visibleAdmins.length === 0 ? (
           <Box sx={{ textAlign: 'center', py: 6 }}>
             <Typography variant="body2" color="text.secondary">No organisers yet.</Typography>
           </Box>
@@ -114,13 +165,14 @@ export default function OrganisersPage() {
               <TableRow>
                 <TableCell>Email</TableCell>
                 <TableCell>Role</TableCell>
+                {isSuperAdmin && <TableCell>Team</TableCell>}
                 <TableCell>Added</TableCell>
                 <TableCell />
               </TableRow>
             </TableHead>
             <TableBody>
-              {admins.map((admin) => {
-                const isSelf = admin.email === SUPERADMIN_EMAIL;
+              {visibleAdmins.map((admin) => {
+                const isSelf = admin.email === userEmail;
                 return (
                   <TableRow key={admin.email} hover>
                     <TableCell>
@@ -155,10 +207,28 @@ export default function OrganisersPage() {
                         >
                           <MenuItem value="team_member">Check-in Only</MenuItem>
                           <MenuItem value="organiser">Organiser</MenuItem>
-                          <MenuItem value="superadmin">Super Admin</MenuItem>
+                          {isSuperAdmin && <MenuItem value="superadmin">Super Admin</MenuItem>}
                         </Select>
                       )}
                     </TableCell>
+                    {isSuperAdmin && (
+                      <TableCell>
+                        <Select
+                          value={admin.teamId ?? ''}
+                          onChange={(e) => e.target.value && handleTeamChange(admin, e.target.value)}
+                          size="small"
+                          displayEmpty
+                          sx={{ fontSize: 12, height: 30, minWidth: 140, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'divider' } }}
+                          renderValue={(val) => val ? (teamName(val) ?? val) : (
+                            <Typography component="span" variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>Unassigned</Typography>
+                          )}
+                        >
+                          {teams.map((t) => (
+                            <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>
+                          ))}
+                        </Select>
+                      </TableCell>
+                    )}
                     <TableCell>
                       <Typography variant="body2" color="text.secondary">
                         {new Date(admin.addedAt).toLocaleDateString(undefined, {

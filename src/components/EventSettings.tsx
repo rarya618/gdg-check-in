@@ -141,7 +141,7 @@ export default function EventSettings({ event, onEventUpdated, onDeleted }: Prop
             value={form.cloudCreditsUrl}
             onChange={handleChange}
             fullWidth
-            helperText="Optional — shown as a button after attendees check in"
+            helperText="Optional, shown as a button after attendees check in"
           />
           {saveError && <Alert severity="error" sx={{ borderRadius: 2 }}>{saveError}</Alert>}
           <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -245,13 +245,13 @@ export default function EventSettings({ event, onEventUpdated, onDeleted }: Prop
       <Paper elevation={1} sx={{ p: 3, borderRadius: 2 }}>
         <Typography variant="subtitle1" sx={{ fontWeight: 600 }} gutterBottom>Export attendees</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Download all attendees (registered and checked in) as a CSV.
+          Download checked-in attendees as a CSV.
         </Typography>
         <Button
           variant="outlined"
           startIcon={<DownloadIcon />}
           onClick={async () => {
-            const attendees = await getAttendees(event.id);
+            const attendees = (await getAttendees(event.id)).filter((a) => a.checkinDate);
             const header = 'first_name,last_name,email,checked_in,job_title,company,ticket_type';
             const rows = attendees.map((a) =>
               [a.firstName, a.lastName, a.email, a.checkinDate ? 'true' : 'false', a.jobTitle ?? '', a.company ?? '', a.ticketType ?? '']

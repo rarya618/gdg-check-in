@@ -40,6 +40,8 @@ export interface Admin {
   role: AdminRole;
   /** ISO 8601 timestamp of when the admin was added. */
   addedAt: string;
+  /** Team this admin belongs to. Absent for superadmin. */
+  teamId?: string;
 }
 
 /**
@@ -92,4 +94,6 @@ export interface Team {
    * Absent when the team has no members yet.
    */
   members?: Record<string, true>;
+  /** When true, members of this team can see all events regardless of assignment. */
+  globalAccess?: boolean;
 }

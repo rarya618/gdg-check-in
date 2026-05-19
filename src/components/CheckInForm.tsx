@@ -222,7 +222,7 @@ export default function CheckInForm({ eventId, onCheckedIn }: Props) {
         {mode === 'walk-in' && (
           <Box component="form" onSubmit={handleWalkIn} sx={{ mt: 1.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
             <Alert severity="info" sx={{ borderRadius: 2 }}>
-              Not pre-registered — checking in as walk-in
+              Not pre-registered, checking in as walk-in
             </Alert>
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
               <TextField

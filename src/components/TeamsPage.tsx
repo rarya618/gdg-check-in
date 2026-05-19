@@ -24,7 +24,9 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
-import { listenTeams, listenAdmins, listenEvents, createTeam, deleteTeam, addTeamMember, removeTeamMember } from '../db';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Switch from '@mui/material/Switch';
+import { listenTeams, listenAdmins, listenEvents, createTeam, deleteTeam, addTeamMember, removeTeamMember, setTeamGlobalAccess } from '../db';
 import type { Team, Admin, GDGEvent } from '../types';
 
 interface Props {
@@ -127,7 +129,7 @@ export default function TeamsPage({ userEmail, isSuperAdmin, canEdit }: Props) {
   }
 
   return (
-    <Box sx={{ maxWidth: 800, mx: 'auto', mt: 4, px: 2 }}>
+    <Box sx={{ mt: 4, px: 4 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 4 }}>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 700 }}>Teams</Typography>
@@ -197,7 +199,12 @@ export default function TeamsPage({ userEmail, isSuperAdmin, canEdit }: Props) {
                   onClick={() => setExpandedTeam(isExpanded ? null : team.id)}
                 >
                   <Box sx={{ flex: 1 }}>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{team.name}</Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{team.name}</Typography>
+                      {team.globalAccess && (
+                        <Chip label="Global access" size="small" color="primary" sx={{ height: 18, fontSize: 11, '& .MuiChip-label': { px: 1 } }} />
+                      )}
+                    </Box>
                     <Typography variant="body2" color="text.secondary" sx={{ fontSize: 13 }}>
                       {members.length} member{members.length !== 1 ? 's' : ''} · {assignedEvents.length} event{assignedEvents.length !== 1 ? 's' : ''}
                     </Typography>
@@ -237,6 +244,24 @@ export default function TeamsPage({ userEmail, isSuperAdmin, canEdit }: Props) {
 
                 <Collapse in={isExpanded}>
                   <Box sx={{ borderTop: '1px solid', borderColor: 'divider' }}>
+                    {/* Global access toggle */}
+                    {isSuperAdmin && (
+                      <Box sx={{ px: 2.5, pt: 1.5, pb: 0.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>Global access</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Members can see all events, not just assigned ones.
+                          </Typography>
+                        </Box>
+                        <Switch
+                          checked={!!team.globalAccess}
+                          onChange={(e) => setTeamGlobalAccess(team.id, e.target.checked)}
+                          size="small"
+                          color="primary"
+                        />
+                      </Box>
+                    )}
+                    {isSuperAdmin && <Divider sx={{ mx: 2, mt: 1 }} />}
                     {/* Members */}
                     <Box sx={{ px: 2.5, pt: 1.5, pb: 0.5 }}>
                       <Typography variant="caption" sx={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: 'text.secondary' }}>
@@ -244,8 +269,8 @@ export default function TeamsPage({ userEmail, isSuperAdmin, canEdit }: Props) {
                       </Typography>
                     </Box>
                     {members.length === 0 ? (
-                      <Box sx={{ px: 2, pb: 1.5 }}>
-                        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                      <Box sx={{ px: 2.5, pb: 1.5 }}>
+                        <Typography variant="body2" color="text.secondary" sx={{}}>
                           No members yet.
                         </Typography>
                       </Box>
