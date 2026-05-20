@@ -24,7 +24,6 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
-import FormControlLabel from '@mui/material/FormControlLabel';
 import Switch from '@mui/material/Switch';
 import { listenTeams, listenAdmins, listenEvents, createTeam, deleteTeam, addTeamMember, removeTeamMember, setTeamGlobalAccess } from '../db';
 import type { Team, Admin, GDGEvent } from '../types';
