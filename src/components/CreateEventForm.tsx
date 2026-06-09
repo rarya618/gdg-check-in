@@ -9,14 +9,15 @@ import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import IconButton from '@mui/material/IconButton';
 import CloseIcon from '@mui/icons-material/Close';
-import { createEvent } from '../db';
+import { createEvent, assignTeamToEvent } from '../db';
 
 interface Props {
   onCreated: (eventId: string) => void;
   onCancel: () => void;
+  autoAssignTeamId?: string;
 }
 
-export default function CreateEventForm({ onCreated, onCancel }: Props) {
+export default function CreateEventForm({ onCreated, onCancel, autoAssignTeamId }: Props) {
   const [form, setForm] = useState({
     name: '',
     date: new Date().toISOString().slice(0, 10),
@@ -41,6 +42,7 @@ export default function CreateEventForm({ onCreated, onCancel }: Props) {
         date: form.date,
         description: form.description.trim() || undefined,
       });
+      if (autoAssignTeamId) await assignTeamToEvent(id, autoAssignTeamId);
       onCreated(id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create event.');
@@ -49,8 +51,8 @@ export default function CreateEventForm({ onCreated, onCancel }: Props) {
   }
 
   return (
-    <Dialog open onClose={onCancel} fullWidth maxWidth="xs">
-      <DialogTitle sx={{ pt: 3, pb: 0.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'space-between', pr: 1.5 }}>
+    <Dialog open onClose={onCancel} fullWidth maxWidth="xs" slotProps={{ paper: { sx: { maxWidth: 360 } } }}>
+      <DialogTitle sx={{ pt: 2, pb: 0.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'space-between', pr: 1.5 }}>
         Event details
         <IconButton onClick={onCancel} size="small" sx={{ mr: 1, color: 'text.secondary' }}>
           <CloseIcon fontSize="small" />
@@ -92,7 +94,7 @@ export default function CreateEventForm({ onCreated, onCancel }: Props) {
           {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
         </DialogContent>
 
-        <DialogActions sx={{ px: 3, pt: 4, pb: 3.5, gap: 0.5 }}>
+        <DialogActions sx={{ px: 2.5, pt: 2.5, pb: 2.5, gap: 0.5 }}>
           <Button onClick={onCancel} variant="outlined" color="inherit" sx={{ px: 2.5, borderRadius: 9999, borderColor: 'divider', color: 'text.secondary' }}>
             Cancel
           </Button>

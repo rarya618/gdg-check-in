@@ -13,10 +13,10 @@ import type { AdminRole } from '../types';
 import AppLogo from './AppLogo';
 
 const FEATURES = [
-  { label: 'Real-time check-in for pre-registered and walk-in attendees' },
-  { label: 'Import attendee lists from Bevy CSV with deduplication' },
-  { label: 'Merch draw with live, transparent picks' },
-  { label: 'Team-based roles with scoped event access' },
+  { label: 'Check in pre-registered and walk-in attendees' },
+  { label: 'Works seamlessly with Bevy' },
+  { label: 'Merch draw' },
+  { label: 'Team roles and event access control' },
 ];
 
 const SUPERADMIN_EMAIL = 'russalarya@gmail.com';
@@ -117,13 +117,7 @@ export default function AuthGate({ children }: Props) {
         {/* Left panel */}
         <Box sx={{
           flex: { md: '0 0 65%' },
-          background: `
-            radial-gradient(ellipse at 10% 20%, rgba(66, 133, 244, 0.25) 0%, transparent 45%),
-            radial-gradient(ellipse at 90% 10%, rgba(234, 67, 53, 0.2) 0%, transparent 40%),
-            radial-gradient(ellipse at 80% 90%, rgba(52, 168, 83, 0.2) 0%, transparent 45%),
-            radial-gradient(ellipse at 15% 85%, rgba(251, 188, 5, 0.18) 0%, transparent 40%),
-            #0D1B2A
-          `,
+          background: 'linear-gradient(rgba(0,0,0,0.18), rgba(0,0,0,0.18)), linear-gradient(135deg, #34A853 0%, #4285F4 50%, #EA4335 100%)',
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'center',
@@ -147,10 +141,10 @@ export default function AuthGate({ children }: Props) {
               letterSpacing: '-0.02em',
             }}
           >
-            Event check-in,<br />done right.
+            Check-in for<br />GDG events.
           </Typography>
-          <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.5)', mb: 5, fontSize: 15, maxWidth: 420 }}>
-            Everything your GDG team needs to run a smooth event, from the door to the draw.
+          <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.8)', mb: 5, fontSize: 15, maxWidth: 420 }}>
+            Built for organiser teams. Simple for attendees.
           </Typography>
 
           {/* Feature list */}
@@ -163,15 +157,15 @@ export default function AuthGate({ children }: Props) {
                   width: 18,
                   height: 18,
                   borderRadius: '50%',
-                  bgcolor: 'rgba(25, 118, 210, 0.25)',
-                  border: '1.5px solid rgba(25, 118, 210, 0.7)',
+                  bgcolor: 'rgba(255, 255, 255, 0.2)',
+                  border: '1.5px solid rgba(255, 255, 255, 0.5)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}>
-                  <Box component="span" sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#42A5F5', display: 'block' }} />
+                  <Box component="span" sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#fff', display: 'block' }} />
                 </Box>
-                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.72)', lineHeight: 1.55, fontSize: 14 }}>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', lineHeight: 1.55, fontSize: 14 }}>
                   {f.label}
                 </Typography>
               </Box>

@@ -357,9 +357,9 @@ export default function TeamsPage({ userEmail, isSuperAdmin, canEdit }: Props) {
         onClose={() => !addingMembers && setAddMemberTeam(null)}
         maxWidth="xs"
         fullWidth
-        slotProps={{ paper: { sx: { borderRadius: 3 } } }}
+        slotProps={{ paper: { sx: { borderRadius: 3, maxWidth: 360 } } }}
       >
-        <DialogTitle sx={{ fontWeight: 700, pb: 1 }}>
+        <DialogTitle sx={{ fontWeight: 700, pt: 2, pb: 1 }}>
           Add members – {addMemberTeam?.name}
         </DialogTitle>
         <DialogContent sx={{ pt: 1 }}>
@@ -399,7 +399,7 @@ export default function TeamsPage({ userEmail, isSuperAdmin, canEdit }: Props) {
             </List>
           )}
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 3, gap: 1 }}>
+        <DialogActions sx={{ px: 2.5, pb: 2, gap: 1 }}>
           <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>{selectedEmails.size} selected</Typography>
           <Button onClick={() => setAddMemberTeam(null)} disabled={addingMembers} sx={{ borderRadius: 9999 }}>Cancel</Button>
           <Button variant="contained" color="primary" onClick={handleConfirmAddMembers} disabled={addingMembers} sx={{ borderRadius: 9999, minWidth: 80 }}>
@@ -409,12 +409,12 @@ export default function TeamsPage({ userEmail, isSuperAdmin, canEdit }: Props) {
       </Dialog>
 
       {/* Delete Confirmation */}
-      <Dialog open={!!deleteTarget} onClose={() => !deleting && setDeleteTarget(null)} maxWidth="xs" fullWidth slotProps={{ paper: { sx: { borderRadius: 3 } } }}>
-        <DialogTitle sx={{ pt: 3, pb: 1.5, fontWeight: 700 }}>Delete team?</DialogTitle>
+      <Dialog open={!!deleteTarget} onClose={() => !deleting && setDeleteTarget(null)} maxWidth="xs" fullWidth slotProps={{ paper: { sx: { borderRadius: 3, maxWidth: 360 } } }}>
+        <DialogTitle sx={{ pt: 2, pb: 1, fontWeight: 700 }}>Delete team?</DialogTitle>
         <DialogContent>
           <Typography>"{deleteTarget?.name}" will be permanently deleted.</Typography>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 3, gap: 1 }}>
+        <DialogActions sx={{ px: 2.5, pb: 2, gap: 1 }}>
           <Button onClick={() => setDeleteTarget(null)} disabled={deleting} sx={{ borderRadius: 9999 }}>Cancel</Button>
           <Button variant="contained" color="error" onClick={handleDeleteTeam} disabled={deleting} sx={{ borderRadius: 9999, minWidth: 80 }}>
             {deleting ? <CircularProgress size={18} color="inherit" /> : 'Delete'}

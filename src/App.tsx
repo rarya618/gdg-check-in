@@ -369,7 +369,7 @@ function AdminApp({ user, role, teamId, onSignOut }: { user: User; role: AdminRo
       </Box>
 
       {showCreate && (
-        <CreateEventForm onCreated={handleEventCreated} onCancel={() => setShowCreate(false)} />
+        <CreateEventForm onCreated={handleEventCreated} onCancel={() => setShowCreate(false)} autoAssignTeamId={isOrganiser ? teamId : undefined} />
       )}
     </Box>
   );

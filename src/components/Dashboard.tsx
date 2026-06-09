@@ -152,16 +152,16 @@ function AddAttendeeDialog({ eventId, open, onClose }: { eventId: string; open: 
       onClose={handleClose}
       fullWidth
       maxWidth="xs"
-      slotProps={{ paper: { sx: { borderRadius: 3 } } }}
+      slotProps={{ paper: { sx: { borderRadius: 3, maxWidth: 360 } } }}
     >
-      <DialogTitle sx={{ fontWeight: 700, pr: 6 }}>
+      <DialogTitle sx={{ fontWeight: 700, pr: 6, pt: 2, pb: 1 }}>
         {mode === 'success' ? 'Checked in!' : 'Add Attendee'}
-        <IconButton onClick={handleClose} size="small" sx={{ position: 'absolute', right: 12, top: 12, color: 'text.secondary' }}>
+        <IconButton onClick={handleClose} size="small" sx={{ position: 'absolute', right: 12, top: 10, color: 'text.secondary' }}>
           <CloseIcon fontSize="small" />
         </IconButton>
       </DialogTitle>
 
-      <DialogContent sx={{ pb: 3 }}>
+      <DialogContent sx={{ pb: 3, display: 'flex', flexDirection: 'column' }}>
         {mode === 'success' && success ? (
           <Box sx={{ textAlign: 'center', pt: 1 }}>
             <Box sx={{ width: 56, height: 56, borderRadius: '50%', bgcolor: 'secondary.light', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2 }}>
@@ -341,15 +341,15 @@ function QRDialog({ eventId, open, onClose }: { eventId: string; open: boolean; 
       onClose={onClose}
       maxWidth="xs"
       fullWidth
-      slotProps={{ paper: { sx: { borderRadius: 3 } } }}
+      slotProps={{ paper: { sx: { borderRadius: 3, maxWidth: 360 } } }}
     >
-      <DialogTitle sx={{ fontWeight: 700, pr: 6 }}>
+      <DialogTitle sx={{ fontWeight: 700, pr: 6, pt: 2, pb: 1 }}>
         Check-in QR Code
-        <IconButton onClick={onClose} size="small" sx={{ position: 'absolute', right: 12, top: 12, color: 'text.secondary' }}>
+        <IconButton onClick={onClose} size="small" sx={{ position: 'absolute', right: 12, top: 10, color: 'text.secondary' }}>
           <CloseIcon fontSize="small" />
         </IconButton>
       </DialogTitle>
-      <DialogContent sx={{ pb: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2.5 }}>
+      <DialogContent sx={{ pb: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
         <Box sx={{ p: 2, bgcolor: 'white', borderRadius: 2, border: '1px solid', borderColor: 'divider', display: 'inline-flex' }}>
           <QRCodeSVG value={checkInUrl} size={220} />
         </Box>

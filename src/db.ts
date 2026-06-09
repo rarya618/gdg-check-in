@@ -272,6 +272,29 @@ export async function findAttendeeByEmail(
 }
 
 /**
+ * Searches all events (except the given one) for an attendee with the matching email.
+ * Used to autofill the walk-in form when an attendee isn't registered for the current event
+ * but has attended a previous one.
+ */
+export async function findAttendeeInAnyEvent(
+  email: string,
+  excludeEventId: string
+): Promise<Pick<Attendee, 'firstName' | 'lastName' | 'email'> | null> {
+  const snap = await get(ref(db, 'events'));
+  if (!snap.exists()) return null;
+  const events = snap.val() as Record<string, any>;
+  for (const [eventId, eventData] of Object.entries(events)) {
+    if (eventId === excludeEventId || !eventData.attendees) continue;
+    const attendees = eventData.attendees as Record<string, Attendee>;
+    const match = Object.values(attendees).find(
+      (a) => a.email?.toLowerCase() === email.toLowerCase()
+    );
+    if (match) return { firstName: match.firstName, lastName: match.lastName, email: match.email };
+  }
+  return null;
+}
+
+/**
  * Stamps a pre-registered attendee as checked in by writing the current UTC timestamp
  * to their `checkinDate` field.
  *

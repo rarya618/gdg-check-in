@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ref, get } from 'firebase/database';
 import { db } from '../firebase';
-import { findAttendeeByEmail, markCheckedIn, checkInAttendee, markCloudCreditsClicked } from '../db';
+import { findAttendeeByEmail, findAttendeeInAnyEvent, markCheckedIn, checkInAttendee, markCloudCreditsClicked } from '../db';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
@@ -25,13 +25,7 @@ const pageBg = {
   justifyContent: 'center',
   px: 2,
   py: 6,
-  background: `
-    radial-gradient(ellipse at 10% 20%, rgba(66, 133, 244, 0.25) 0%, transparent 45%),
-    radial-gradient(ellipse at 90% 10%, rgba(234, 67, 53, 0.2) 0%, transparent 40%),
-    radial-gradient(ellipse at 80% 90%, rgba(52, 168, 83, 0.2) 0%, transparent 45%),
-    radial-gradient(ellipse at 15% 85%, rgba(251, 188, 5, 0.18) 0%, transparent 40%),
-    #0D1B2A
-  `,
+  background: 'linear-gradient(rgba(0,0,0,0.18), rgba(0,0,0,0.18)), linear-gradient(135deg, #34A853 0%, #4285F4 50%, #EA4335 100%)',
 };
 
 export default function ConsumerCheckIn({ eventId }: Props) {
@@ -42,6 +36,7 @@ export default function ConsumerCheckIn({ eventId }: Props) {
   const [email, setEmail] = useState('');
   const [mode, setMode] = useState<Mode>('lookup');
 const [walkIn, setWalkIn] = useState({ firstName: '', lastName: '' });
+  const [autofilled, setAutofilled] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState<Attendee | null>(null);
@@ -65,6 +60,11 @@ const [walkIn, setWalkIn] = useState({ firstName: '', lastName: '' });
     try {
       const result = await findAttendeeByEmail(eventId, trimmed);
       if (!result) {
+        const past = await findAttendeeInAnyEvent(trimmed, eventId);
+        if (past) {
+          setWalkIn({ firstName: past.firstName, lastName: past.lastName });
+          setAutofilled(true);
+        }
         setMode('walk-in');
       } else if (result.attendee.checkinDate) {
         setSuccess(result.attendee);
@@ -122,7 +122,7 @@ const [walkIn, setWalkIn] = useState({ firstName: '', lastName: '' });
   if (success) {
     return (
       <Box sx={pageBg}>
-        <Paper elevation={4} sx={{ p: 4, width: '100%', maxWidth: 420, textAlign: 'center', borderRadius: 4 }}>
+        <Paper elevation={0} sx={{ p: 4, width: '100%', maxWidth: 360, textAlign: 'center', borderRadius: 4, border: '1px solid rgba(255,255,255,0.25)' }}>
           <Box sx={{ width: 80, height: 80, borderRadius: '50%', bgcolor: 'secondary.light', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 3 }}>
             <svg width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="#34A853" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -145,7 +145,7 @@ const [walkIn, setWalkIn] = useState({ firstName: '', lastName: '' });
                 markCloudCreditsClicked(eventId, success.email);
                 window.open(event.cloudCreditsUrl, '_blank', 'noopener,noreferrer');
               }}
-              sx={{ mt: 1, borderRadius: 9999, py: 1.5, fontWeight: 700, bgcolor: '#4285F4', '&:hover': { bgcolor: '#3367D6' } }}
+              sx={{ mt: 1, borderRadius: 9999, py: 1, fontWeight: 700, bgcolor: '#4285F4', '&:hover': { bgcolor: '#3367D6' } }}
             >
               Get Cloud Credits
             </Button>
@@ -158,7 +158,7 @@ const [walkIn, setWalkIn] = useState({ firstName: '', lastName: '' });
   if (event?.status === 'closed') {
     return (
       <Box sx={pageBg}>
-        <Paper elevation={4} sx={{ p: 4, width: '100%', maxWidth: 360, textAlign: 'center', borderRadius: 4 }}>
+        <Paper elevation={0} sx={{ p: 4, width: '100%', maxWidth: 360, textAlign: 'center', borderRadius: 4, border: '1px solid rgba(255,255,255,0.25)' }}>
           <Box sx={{ width: 64, height: 64, borderRadius: '50%', bgcolor: 'error.light', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2.5 }}>
             <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="#EA4335" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -175,7 +175,7 @@ const [walkIn, setWalkIn] = useState({ firstName: '', lastName: '' });
 
   return (
     <Box sx={pageBg}>
-      <Paper elevation={3} sx={{ p: { xs: 3.5, md: 4.5 }, width: '100%', maxWidth: 480, borderRadius: 3 }}>
+      <Paper elevation={0} sx={{ py: { xs: 3.5, md: 4.5 }, px: { xs: 3, md: 4 }, width: '100%', maxWidth: 380, borderRadius: 3, border: '1px solid rgba(255,255,255,0.25)' }}>
         {/* Logo */}
         <Box sx={{ mb: 0.5, display: 'flex', justifyContent: 'flex-start' }}>
           <AppLogo />
@@ -207,7 +207,7 @@ const [walkIn, setWalkIn] = useState({ firstName: '', lastName: '' });
               disabled={mode === 'walk-in'}
             />
             {mode !== 'walk-in' && (
-              <Button type="submit" variant="contained" size="large" disabled={busy} sx={{ borderRadius: 9999, py: 1.5, fontWeight: 700, alignSelf: 'flex-start', px: 4 }}>
+              <Button type="submit" variant="contained" size="large" disabled={busy} sx={{ borderRadius: 9999, py: 1, fontWeight: 700, alignSelf: 'flex-start', px: 4 }}>
                 {busy ? <CircularProgress size={22} color="inherit" /> : 'Next'}
               </Button>
             )}
@@ -222,14 +222,15 @@ const [walkIn, setWalkIn] = useState({ firstName: '', lastName: '' });
                   <TextField
                     label="First Name"
                     value={walkIn.firstName}
-                    onChange={(e) => { setWalkIn((w) => ({ ...w, firstName: e.target.value })); setError(''); }}
+                    onChange={(e) => { setWalkIn((w) => ({ ...w, firstName: e.target.value })); setError(''); setAutofilled(false); }}
                     placeholder="Jane"
                     fullWidth
+                    helperText={autofilled ? 'From a previous event' : undefined}
                   />
                   <TextField
                     label="Last Name"
                     value={walkIn.lastName}
-                    onChange={(e) => { setWalkIn((w) => ({ ...w, lastName: e.target.value })); setError(''); }}
+                    onChange={(e) => { setWalkIn((w) => ({ ...w, lastName: e.target.value })); setError(''); setAutofilled(false); }}
                     placeholder="Doe"
                     fullWidth
                   />
@@ -240,12 +241,12 @@ const [walkIn, setWalkIn] = useState({ firstName: '', lastName: '' });
                   size="large"
                   disabled={busy}
                   fullWidth
-                  sx={{ borderRadius: 9999, py: 1.5, fontWeight: 700 }}
+                  sx={{ borderRadius: 9999, py: 1, fontWeight: 700 }}
                 >
                   {busy ? <CircularProgress size={22} color="inherit" /> : 'Check in'}
                 </Button>
               </Box>
-              <Button variant="text" size="small" onClick={() => { setMode('lookup'); setEmail(''); setError(''); }} sx={{ color: 'text.secondary' }}>
+              <Button variant="text" size="small" onClick={() => { setMode('lookup'); setEmail(''); setWalkIn({ firstName: '', lastName: '' }); setAutofilled(false); setError(''); }} sx={{ color: 'text.secondary' }}>
                 Back
               </Button>
             </>

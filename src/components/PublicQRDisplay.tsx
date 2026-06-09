@@ -20,13 +20,7 @@ const pageBg = {
   justifyContent: 'center',
   px: 2,
   py: 6,
-  background: `
-    radial-gradient(ellipse at 10% 20%, rgba(66, 133, 244, 0.25) 0%, transparent 45%),
-    radial-gradient(ellipse at 90% 10%, rgba(234, 67, 53, 0.2) 0%, transparent 40%),
-    radial-gradient(ellipse at 80% 90%, rgba(52, 168, 83, 0.2) 0%, transparent 45%),
-    radial-gradient(ellipse at 15% 85%, rgba(251, 188, 5, 0.18) 0%, transparent 40%),
-    #0D1B2A
-  `,
+  background: 'linear-gradient(rgba(0,0,0,0.18), rgba(0,0,0,0.18)), linear-gradient(135deg, #34A853 0%, #4285F4 50%, #EA4335 100%)',
 };
 
 export default function PublicQRDisplay({ eventId }: Props) {
@@ -62,7 +56,7 @@ export default function PublicQRDisplay({ eventId }: Props) {
 
   return (
     <Box sx={pageBg}>
-      <Paper elevation={3} sx={{ p: { xs: 3.5, md: 4.5 }, width: '100%', maxWidth: 480, borderRadius: 3, textAlign: 'center' }}>
+      <Paper elevation={0} sx={{ py: { xs: 3.5, md: 4.5 }, px: { xs: 3, md: 4 }, width: '100%', maxWidth: 380, borderRadius: 3, textAlign: 'center', border: '1px solid rgba(255,255,255,0.25)' }}>
         <Box sx={{ mb: 0.5, display: 'flex', justifyContent: 'flex-start' }}>
           <AppLogo />
         </Box>
@@ -84,7 +78,7 @@ export default function PublicQRDisplay({ eventId }: Props) {
         )}
 
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, mt: 3 }}>
-          <Box sx={{ p: 1.5, bgcolor: 'white', borderRadius: 3, boxShadow: '0 4px 24px rgba(0,0,0,0.08)', display: 'inline-flex', border: '1px solid', borderColor: 'divider' }}>
+          <Box sx={{ p: 1.5, bgcolor: 'white', borderRadius: 3, display: 'inline-flex', border: '1px solid', borderColor: 'divider' }}>
             <QRCodeSVG value={checkInUrl} size={240} marginSize={1} />
           </Box>
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
