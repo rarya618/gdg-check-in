@@ -29,3 +29,4 @@ dist-ssr
 /src/fonts
 /.firebase
 /.claude
+.firebaserc
