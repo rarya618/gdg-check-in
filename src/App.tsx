@@ -162,7 +162,7 @@ function AdminApp({ user, role, teamId, onSignOut }: { user: User; role: AdminRo
           <AppLogo />
         </Box>
         {isMobile && (
-          <IconButton onClick={() => setMobileOpen(false)} aria-label="Close menu" size="small" sx={{ color: 'text.secondary', mt: -1 }}>
+          <IconButton onClick={() => setMobileOpen(false)} aria-label="Close menu" size="small" sx={{ color: 'text.secondary' }}>
             <CloseIcon fontSize="small" />
           </IconButton>
         )}
