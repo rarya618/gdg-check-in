@@ -350,7 +350,7 @@ function AdminApp({ user, role, teamId, onSignOut }: { user: User; role: AdminRo
           <CheckInForm eventId={activeEvent.id} onCheckedIn={() => setCheckedInCount(n => n + 1)} />
         )}
         {view === 'event-detail' && activeEvent && tab === 'dashboard' && (
-          <Dashboard eventId={activeEvent.id} cloudCreditsUrl={activeEvent.cloudCreditsUrl} />
+          <Dashboard eventId={activeEvent.id} cloudCreditsUrl={activeEvent.cloudCreditsUrl} walkInTicketTitle={activeEvent.walkInTicketTitle} walkInTicketVenue={activeEvent.walkInTicketVenue} />
         )}
         {view === 'event-detail' && activeEvent && tab === 'draw' && (
           <LuckyDraw eventId={activeEvent.id} />
