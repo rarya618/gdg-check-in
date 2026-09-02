@@ -34,6 +34,8 @@ import type { Attendee } from '../types';
 interface Props {
   eventId: string;
   cloudCreditsUrl?: string;
+  walkInTicketTitle?: string;
+  walkInTicketVenue?: string;
 }
 
 /**
@@ -56,7 +58,7 @@ type DialogMode = 'lookup' | 'found-pre' | 'found-duplicate' | 'walk-in' | 'succ
  *   4. If unknown → collect name and create a walk-in record (walk-in).
  *   5. On success → show confirmation with ticket details (success).
  */
-function AddAttendeeDialog({ eventId, open, onClose }: { eventId: string; open: boolean; onClose: () => void }) {
+function AddAttendeeDialog({ eventId, open, onClose, walkInTicketTitle, walkInTicketVenue }: { eventId: string; open: boolean; onClose: () => void; walkInTicketTitle?: string; walkInTicketVenue?: string }) {
   const [email, setEmail] = useState('');
   const [mode, setMode] = useState<DialogMode>('lookup');
   const [foundKey, setFoundKey] = useState('');
@@ -127,6 +129,8 @@ function AddAttendeeDialog({ eventId, open, onClose }: { eventId: string; open: 
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         email: email.trim(),
+        ...(walkInTicketTitle ? { ticketTitle: walkInTicketTitle } : {}),
+        ...(walkInTicketVenue ? { ticketVenue: walkInTicketVenue } : {}),
       });
       setSuccess(attendee);
       setMode('success');
@@ -411,7 +415,7 @@ function QRDialog({ eventId, open, onClose }: { eventId: string; open: boolean; 
  * - `AddAttendeeDialog` — manual lookup + check-in / walk-in flow.
  * - `QRDialog`          — share the public check-in URL / kiosk display URL.
  */
-export default function Dashboard({ eventId, cloudCreditsUrl }: Props) {
+export default function Dashboard({ eventId, cloudCreditsUrl, walkInTicketTitle, walkInTicketVenue }: Props) {
   const [attendees, setAttendees] = useState<Attendee[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -593,7 +597,7 @@ export default function Dashboard({ eventId, cloudCreditsUrl }: Props) {
         </TableContainer>
       )}
 
-      <AddAttendeeDialog eventId={eventId} open={addOpen} onClose={() => setAddOpen(false)} />
+      <AddAttendeeDialog eventId={eventId} open={addOpen} onClose={() => setAddOpen(false)} walkInTicketTitle={walkInTicketTitle} walkInTicketVenue={walkInTicketVenue} />
       <QRDialog eventId={eventId} open={qrOpen} onClose={() => setQrOpen(false)} />
       </Box>
     </Box>
