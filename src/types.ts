@@ -21,6 +21,10 @@ export interface Attendee {
   jobTitle?: string;
   company?: string;
   ticketType?: string;
+  /** Bevy ticket title — present only for Bevy-imported attendees. */
+  ticketTitle?: string;
+  /** Bevy ticket venue — present only for Bevy-imported attendees. */
+  ticketVenue?: string;
 }
 
 /**
@@ -77,7 +81,17 @@ export interface GDGEvent {
   checkedInCount?: number;
   /** Optional URL shown as a button on the check-in success screen (e.g. a Google Cloud Credits redemption link). */
   cloudCreditsUrl?: string;
+  /** Ticket title stamped on walk-in check-ins and used as the CSV export fallback. Defaults to `Walk-in`. */
+  walkInTicketTitle?: string;
+  /** Ticket venue stamped on walk-in check-ins and used as the CSV export fallback. Defaults to `In-person`. */
+  walkInTicketVenue?: string;
 }
+
+/** Selectable ticket titles for walk-in check-ins (configured per event in Settings). */
+export const WALK_IN_TICKET_TITLES = ['General Admission', 'Walk-in', 'Speaker', 'Volunteer', 'Organiser'] as const;
+
+/** Selectable ticket venues for walk-in check-ins (configured per event in Settings). */
+export const WALK_IN_TICKET_VENUES = ['In-person', 'Virtual', 'Hybrid'] as const;
 
 /**
  * A volunteer / organiser team stored under `teams/{id}`.
