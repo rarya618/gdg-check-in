@@ -3,6 +3,7 @@ import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import TextField from '@mui/material/TextField';
+import MenuItem from '@mui/material/MenuItem';
 import Button from '@mui/material/Button';
 import Switch from '@mui/material/Switch';
 import FormControlLabel from '@mui/material/FormControlLabel';
@@ -18,6 +19,7 @@ import Tooltip from '@mui/material/Tooltip';
 import IconButton from '@mui/material/IconButton';
 import { updateEvent, deleteEvent, listenTeams, assignTeamToEvent, removeTeamFromEvent, getAttendees } from '../db';
 import type { GDGEvent, Team } from '../types';
+import { WALK_IN_TICKET_TITLES, WALK_IN_TICKET_VENUES } from '../types';
 import BevyImport from './BevyImport';
 
 interface Props {
@@ -45,6 +47,8 @@ export default function EventSettings({ event, onEventUpdated, onDeleted }: Prop
     date: event.date,
     description: event.description ?? '',
     cloudCreditsUrl: event.cloudCreditsUrl ?? '',
+    walkInTicketTitle: event.walkInTicketTitle ?? WALK_IN_TICKET_TITLES[0],
+    walkInTicketVenue: event.walkInTicketVenue ?? WALK_IN_TICKET_VENUES[0],
   });
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -89,8 +93,10 @@ export default function EventSettings({ event, onEventUpdated, onDeleted }: Prop
         date: form.date,
         description: form.description.trim(),
         cloudCreditsUrl: form.cloudCreditsUrl.trim(),
+        walkInTicketTitle: form.walkInTicketTitle,
+        walkInTicketVenue: form.walkInTicketVenue,
       });
-      const updated = { ...event, name: form.name.trim(), date: form.date, description: form.description.trim() || undefined, cloudCreditsUrl: form.cloudCreditsUrl.trim() || undefined };
+      const updated = { ...event, name: form.name.trim(), date: form.date, description: form.description.trim() || undefined, cloudCreditsUrl: form.cloudCreditsUrl.trim() || undefined, walkInTicketTitle: form.walkInTicketTitle, walkInTicketVenue: form.walkInTicketVenue };
       onEventUpdated(updated);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2500);
@@ -168,6 +174,32 @@ export default function EventSettings({ event, onEventUpdated, onDeleted }: Prop
               fullWidth
               helperText="Optional, shown as a button after attendees check in"
             />
+            <TextField
+              name="walkInTicketTitle"
+              label="Walk-in ticket title"
+              select
+              value={form.walkInTicketTitle}
+              onChange={handleChange}
+              fullWidth
+              helperText="Applied to walk-in check-ins and used as the CSV export fallback"
+            >
+              {WALK_IN_TICKET_TITLES.map((t) => (
+                <MenuItem key={t} value={t}>{t}</MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              name="walkInTicketVenue"
+              label="Walk-in ticket venue"
+              select
+              value={form.walkInTicketVenue}
+              onChange={handleChange}
+              fullWidth
+              helperText="Applied to walk-in check-ins and used as the CSV export fallback"
+            >
+              {WALK_IN_TICKET_VENUES.map((v) => (
+                <MenuItem key={v} value={v}>{v}</MenuItem>
+              ))}
+            </TextField>
             {saveError && <Alert severity="error" sx={{ borderRadius: 2 }}>{saveError}</Alert>}
             <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
               <Button
@@ -319,9 +351,9 @@ export default function EventSettings({ event, onEventUpdated, onDeleted }: Prop
             startIcon={<DownloadIcon />}
             onClick={async () => {
               const attendees = (await getAttendees(event.id)).filter((a) => a.checkinDate);
-              const header = 'first_name,last_name,email,checked_in,job_title,company,ticket_type';
+              const header = 'first_name,last_name,email,checked_in,job_title,company,ticket_type,ticket_title,ticket_venue';
               const rows = attendees.map((a) =>
-                [a.firstName, a.lastName, a.email, a.checkinDate ? 'true' : 'false', a.jobTitle ?? '', a.company ?? '', a.ticketType ?? '']
+                [a.firstName, a.lastName, a.email, a.checkinDate ? 'true' : 'false', a.jobTitle ?? '', a.company ?? '', a.ticketType ?? '', a.ticketTitle || event.walkInTicketTitle || 'General Admission', a.ticketVenue || event.walkInTicketVenue || 'In-person']
                   .map((v) => `"${String(v).replace(/"/g, '""')}"`)
                   .join(',')
               );
