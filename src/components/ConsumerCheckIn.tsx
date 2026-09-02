@@ -9,6 +9,9 @@ import TextField from '@mui/material/TextField';
 import Button from '@mui/material/Button';
 import Alert from '@mui/material/Alert';
 import CircularProgress from '@mui/material/CircularProgress';
+import CheckIcon from '@mui/icons-material/Check';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import type { Attendee, GDGEvent } from '../types';
 import AppLogo from './AppLogo';
 
@@ -18,16 +21,52 @@ interface Props {
 
 type Mode = 'lookup' | 'walk-in';
 
-const pageBg = {
+/** The four Google colours, as the rule across the top of the card. */
+const BRAND = ['#4285F4', '#EA4335', '#FBBC05', '#34A853'];
+
+const page = {
   minHeight: '100vh',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
+  bgcolor: '#F1F3F4',
   px: 2,
-  py: 6,
-  background: 'linear-gradient(rgba(0,0,0,0.18), rgba(0,0,0,0.18)), linear-gradient(135deg, #34A853 0%, #4285F4 50%, #EA4335 100%)',
+  py: 5,
 };
 
+const card = {
+  width: '100%',
+  maxWidth: 400,
+  borderRadius: 4,
+  overflow: 'hidden',
+  border: '1px solid',
+  borderColor: 'divider',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+};
+
+/** The brand rule that tops every card on this screen. */
+function BrandRule() {
+  return (
+    <Box sx={{ display: 'flex', height: 5 }}>
+      {BRAND.map((c) => (
+        <Box key={c} sx={{ flex: 1, bgcolor: c }} />
+      ))}
+    </Box>
+  );
+}
+
+function localTime(iso: string) {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+/**
+ * The screen an attendee gets on their own phone, from the QR code or link.
+ *
+ * One question — their email — decides everything: a pre-registered address is
+ * checked in on the spot, an unknown one collects a name and goes in as a
+ * walk-in. The result screen is built to be held up to a staff member, so the
+ * name and ticket are the largest things on it.
+ */
 export default function ConsumerCheckIn({ eventId }: Props) {
   const [event, setEvent] = useState<GDGEvent | null>(null);
   const [loading, setLoading] = useState(true);
@@ -35,11 +74,13 @@ export default function ConsumerCheckIn({ eventId }: Props) {
 
   const [email, setEmail] = useState('');
   const [mode, setMode] = useState<Mode>('lookup');
-const [walkIn, setWalkIn] = useState({ firstName: '', lastName: '' });
+  const [walkIn, setWalkIn] = useState({ firstName: '', lastName: '' });
   const [autofilled, setAutofilled] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState<Attendee | null>(null);
+  const [alreadyIn, setAlreadyIn] = useState(false);
+  const [creditsClaimed, setCreditsClaimed] = useState(false);
 
   useEffect(() => {
     get(ref(db, `events/${eventId}`)).then((snap) => {
@@ -53,8 +94,8 @@ const [walkIn, setWalkIn] = useState({ firstName: '', lastName: '' });
   async function handleLookup(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = email.trim();
-    if (!trimmed) { setError('Enter your email address.'); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) { setError('Please enter a valid email address.'); return; }
+    if (!trimmed) { setError('Enter your email address to check in.'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) { setError('That doesn’t look like an email address.'); return; }
     setBusy(true);
     setError('');
     try {
@@ -67,13 +108,14 @@ const [walkIn, setWalkIn] = useState({ firstName: '', lastName: '' });
         }
         setMode('walk-in');
       } else if (result.attendee.checkinDate) {
+        setAlreadyIn(true);
         setSuccess(result.attendee);
       } else {
         const checked = await markCheckedIn(eventId, result.key, result.attendee);
         setSuccess(checked);
       }
     } catch {
-      setError('Something went wrong. Please try again.');
+      setError('Something went wrong. Try again in a moment.');
     }
     setBusy(false);
   }
@@ -81,7 +123,7 @@ const [walkIn, setWalkIn] = useState({ firstName: '', lastName: '' });
   async function handleWalkIn(e: React.FormEvent) {
     e.preventDefault();
     const { firstName, lastName } = walkIn;
-    if (!firstName.trim() || !lastName.trim()) { setError('First and last name are required.'); return; }
+    if (!firstName.trim() || !lastName.trim()) { setError('We need both names to check you in.'); return; }
     setBusy(true);
     setError('');
     try {
@@ -92,64 +134,83 @@ const [walkIn, setWalkIn] = useState({ firstName: '', lastName: '' });
       });
       setSuccess(attendee);
     } catch {
-      setError('Check-in failed. Please try again.');
+      setError('Check-in failed. Try again in a moment.');
     }
     setBusy(false);
   }
 
   if (loading) {
     return (
-      <Box sx={pageBg}>
-        <CircularProgress sx={{ color: 'rgba(255,255,255,0.7)' }} />
+      <Box sx={page}>
+        <CircularProgress />
       </Box>
     );
   }
 
   if (notFound) {
     return (
-      <Box sx={pageBg}>
-        <Box sx={{ textAlign: 'center' }}>
-          <Typography variant="h3" sx={{ mb: 2 }}>🔍</Typography>
-          <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }} gutterBottom>Event not found</Typography>
-          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)' }}>
-            This check-in link may be invalid or expired.
-          </Typography>
-        </Box>
+      <Box sx={page}>
+        <Paper elevation={0} sx={card}>
+          <BrandRule />
+          <Box sx={{ p: { xs: 3, sm: 4 }, textAlign: 'center' }}>
+            <Typography sx={{ fontWeight: 700, fontSize: 20 }}>This link doesn’t lead anywhere</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              The event may have been removed, or the link was copied incompletely. Ask a volunteer for the current QR code.
+            </Typography>
+          </Box>
+        </Paper>
       </Box>
     );
   }
 
+  // Held up to a staff member at the door, so name and ticket lead.
   if (success) {
     return (
-      <Box sx={pageBg}>
-        <Paper elevation={0} sx={{ p: 4, width: '100%', maxWidth: 360, textAlign: 'center', borderRadius: 4, border: '1px solid rgba(255,255,255,0.25)' }}>
-          <Box sx={{ width: 80, height: 80, borderRadius: '50%', bgcolor: 'secondary.light', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 3 }}>
-            <svg width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="#34A853" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-          </Box>
-          <Typography variant="h5" sx={{ fontWeight: 700 }} gutterBottom>You're in!</Typography>
-          <Typography variant="h4" sx={{ fontWeight: 800, color: 'primary.main', lineHeight: 1.2, mb: 0.5 }}>
-            {success.firstName} {success.lastName}
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>{success.email}</Typography>
-          <Typography variant="body1" color="text.secondary" sx={{ mt: 2, mb: 3 }}>
-            Please show this screen to one of the check-in staff.
-          </Typography>
-          {event?.cloudCreditsUrl && (
-            <Button
-              variant="contained"
-              size="large"
-              fullWidth
-              onClick={() => {
-                markCloudCreditsClicked(eventId, success.email);
-                window.open(event.cloudCreditsUrl, '_blank', 'noopener,noreferrer');
+      <Box sx={page}>
+        <Paper elevation={0} sx={card}>
+          <BrandRule />
+          <Box sx={{ p: { xs: 3, sm: 4 }, textAlign: 'center' }}>
+            <Box
+              sx={{
+                width: 64, height: 64, borderRadius: '50%', bgcolor: '#E6F4EA', color: '#34A853',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2.5,
               }}
-              sx={{ mt: 1, borderRadius: 9999, py: 1, fontWeight: 700, bgcolor: '#4285F4', '&:hover': { bgcolor: '#3367D6' } }}
             >
-              Get Cloud Credits
-            </Button>
-          )}
+              <CheckIcon sx={{ fontSize: 36 }} />
+            </Box>
+
+            <Typography variant="body2" color="text.secondary">
+              {alreadyIn ? `Already checked in at ${localTime(success.checkinDate!)}` : 'You’re checked in'}
+            </Typography>
+            <Typography sx={{ fontWeight: 700, fontSize: 30, lineHeight: 1.15, letterSpacing: '-0.02em', mt: 0.5 }}>
+              {success.firstName} {success.lastName}
+            </Typography>
+            <Typography sx={{ fontFamily: 'monospace', fontSize: 14, color: 'text.secondary', mt: 1 }}>
+              {success.ticketNumber}
+            </Typography>
+
+            <Box sx={{ bgcolor: 'grey.50', borderRadius: 2.5, px: 2, py: 1.5, mt: 3 }}>
+              <Typography variant="body2" color="text.secondary">
+                Show this screen to a volunteer at the door.
+              </Typography>
+            </Box>
+
+            {event?.cloudCreditsUrl && (
+              <Button
+                variant="contained"
+                fullWidth
+                endIcon={<OpenInNewIcon sx={{ fontSize: 18 }} />}
+                onClick={() => {
+                  markCloudCreditsClicked(eventId, success.email);
+                  setCreditsClaimed(true);
+                  window.open(event.cloudCreditsUrl, '_blank', 'noopener,noreferrer');
+                }}
+                sx={{ mt: 2.5, borderRadius: 9999, py: 1.4, fontSize: 16 }}
+              >
+                {creditsClaimed ? 'Open cloud credits again' : 'Claim your cloud credits'}
+              </Button>
+            )}
+          </Box>
         </Paper>
       </Box>
     );
@@ -157,99 +218,128 @@ const [walkIn, setWalkIn] = useState({ firstName: '', lastName: '' });
 
   if (event?.status === 'closed') {
     return (
-      <Box sx={pageBg}>
-        <Paper elevation={0} sx={{ p: 4, width: '100%', maxWidth: 360, textAlign: 'center', borderRadius: 4, border: '1px solid rgba(255,255,255,0.25)' }}>
-          <Box sx={{ width: 64, height: 64, borderRadius: '50%', bgcolor: 'error.light', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2.5 }}>
-            <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="#EA4335" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-            </svg>
+      <Box sx={page}>
+        <Paper elevation={0} sx={card}>
+          <BrandRule />
+          <Box sx={{ p: { xs: 3, sm: 4 }, textAlign: 'center' }}>
+            <Box
+              sx={{
+                width: 56, height: 56, borderRadius: '50%', bgcolor: 'grey.100', color: 'text.secondary',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2.5,
+              }}
+            >
+              <LockOutlinedIcon sx={{ fontSize: 28 }} />
+            </Box>
+            <Typography sx={{ fontWeight: 700, fontSize: 20 }}>Check-in is closed</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              {event.name} isn’t taking check-ins right now. If you’re at the door, a volunteer can still check you in.
+            </Typography>
           </Box>
-          <Typography variant="h6" sx={{ fontWeight: 700 }} gutterBottom>Check-ins are closed</Typography>
-          <Typography variant="body2" color="text.secondary">
-            This event is no longer accepting registrations.
-          </Typography>
         </Paper>
       </Box>
     );
   }
 
   return (
-    <Box sx={pageBg}>
-      <Paper elevation={0} sx={{ py: { xs: 3.5, md: 4.5 }, px: { xs: 3, md: 4 }, width: '100%', maxWidth: 380, borderRadius: 3, border: '1px solid rgba(255,255,255,0.25)' }}>
-        {/* Logo */}
-        <Box sx={{ mb: 0.5, display: 'flex', justifyContent: 'flex-start' }}>
-          <AppLogo />
-        </Box>
-
-        {/* Event info */}
-        <Typography variant="h5" sx={{ fontWeight: 800, mb: 0.5, letterSpacing: '-0.01em' }}>
-          {event?.name}
-        </Typography>
-        {event?.date && (
-          <Typography variant="body2" color="text.secondary" sx={{ mb: event?.description ? 1 : 0 }}>
-            {new Date(event.date + 'T00:00:00').toLocaleDateString(undefined, {
-              weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-            })}
-          </Typography>
-        )}
-
-        {/* Form */}
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 3, mb: 1.5 }}>Enter your email address to get started.</Typography>
-
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <Box component="form" onSubmit={handleLookup} sx={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <TextField
-              type="email"
-              label="Email"
-              value={email}
-              onChange={(e) => { setEmail(e.target.value); setError(''); setMode('lookup'); }}
-              fullWidth
-              disabled={mode === 'walk-in'}
-            />
-            {mode !== 'walk-in' && (
-              <Button type="submit" variant="contained" size="large" disabled={busy} sx={{ borderRadius: 9999, py: 1, fontWeight: 700, alignSelf: 'flex-start', px: 4 }}>
-                {busy ? <CircularProgress size={22} color="inherit" /> : 'Next'}
-              </Button>
-            )}
+    <Box sx={page}>
+      <Paper elevation={0} sx={card}>
+        <BrandRule />
+        <Box sx={{ p: { xs: 3, sm: 4 } }}>
+          <Box sx={{ ml: -1.5, mb: 2.5 }}>
+            <AppLogo size={20} />
           </Box>
 
-          {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
+          <Typography sx={{ fontWeight: 700, fontSize: 22, lineHeight: 1.25, letterSpacing: '-0.02em' }}>
+            {event?.name}
+          </Typography>
+          {event?.date && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              {new Date(event.date + 'T00:00:00').toLocaleDateString(undefined, {
+                weekday: 'long', month: 'long', day: 'numeric',
+              })}
+            </Typography>
+          )}
 
-          {mode === 'walk-in' && (
-            <>
-              <Box component="form" onSubmit={handleWalkIn} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
-                  <TextField
-                    label="First Name"
-                    value={walkIn.firstName}
-                    onChange={(e) => { setWalkIn((w) => ({ ...w, firstName: e.target.value })); setError(''); setAutofilled(false); }}
-                    placeholder="Jane"
-                    fullWidth
-                    helperText={autofilled ? 'From a previous event' : undefined}
-                  />
-                  <TextField
-                    label="Last Name"
-                    value={walkIn.lastName}
-                    onChange={(e) => { setWalkIn((w) => ({ ...w, lastName: e.target.value })); setError(''); setAutofilled(false); }}
-                    placeholder="Doe"
-                    fullWidth
-                  />
-                </Box>
-                <Button
-                  type="submit"
-                  variant="contained"
-                  size="large"
-                  disabled={busy}
-                  fullWidth
-                  sx={{ borderRadius: 9999, py: 1, fontWeight: 700 }}
-                >
-                  {busy ? <CircularProgress size={22} color="inherit" /> : 'Check in'}
-                </Button>
-              </Box>
-              <Button variant="text" size="small" onClick={() => { setMode('lookup'); setEmail(''); setWalkIn({ firstName: '', lastName: '' }); setAutofilled(false); setError(''); }} sx={{ color: 'text.secondary' }}>
-                Back
+          {mode === 'lookup' ? (
+            <Box component="form" onSubmit={handleLookup} sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 3.5 }}>
+              <TextField
+                type="email"
+                label="Your email"
+                value={email}
+                onChange={(e) => { setEmail(e.target.value); setError(''); }}
+                placeholder="you@example.com"
+                fullWidth
+                autoFocus
+                slotProps={{
+                  htmlInput: { inputMode: 'email', autoCapitalize: 'off', autoCorrect: 'off', spellCheck: false, autoComplete: 'email' },
+                }}
+                sx={{ '& .MuiInputBase-input': { fontSize: 17, py: 1.75 } }}
+              />
+              <Typography variant="body2" color="text.secondary" sx={{ fontSize: 12.5, mt: -0.5 }}>
+                Use the address you registered with. Not registered? You can still come in.
+              </Typography>
+
+              {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
+
+              <Button
+                type="submit"
+                variant="contained"
+                fullWidth
+                disabled={busy}
+                sx={{ borderRadius: 9999, py: 1.5, fontSize: 16, mt: 0.5 }}
+              >
+                {busy ? <CircularProgress size={22} color="inherit" /> : 'Check me in'}
               </Button>
-            </>
+            </Box>
+          ) : (
+            <Box component="form" onSubmit={handleWalkIn} sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 3.5 }}>
+              <Box>
+                <Typography sx={{ fontWeight: 700, fontSize: 16 }}>
+                  {autofilled ? 'Is this still you?' : 'You’re not on the list — that’s fine'}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                  {autofilled
+                    ? `We recognise ${email.trim()} from a previous event. Check the details and you’re in.`
+                    : `Tell us your name and we’ll check you in as a walk-in.`}
+                </Typography>
+              </Box>
+
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5 }}>
+                <TextField
+                  label="First name"
+                  value={walkIn.firstName}
+                  onChange={(e) => { setWalkIn((w) => ({ ...w, firstName: e.target.value })); setError(''); setAutofilled(false); }}
+                  placeholder="Jane"
+                  fullWidth
+                  autoFocus={!autofilled}
+                />
+                <TextField
+                  label="Last name"
+                  value={walkIn.lastName}
+                  onChange={(e) => { setWalkIn((w) => ({ ...w, lastName: e.target.value })); setError(''); setAutofilled(false); }}
+                  placeholder="Doe"
+                  fullWidth
+                />
+              </Box>
+
+              {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
+
+              <Button
+                type="submit"
+                variant="contained"
+                fullWidth
+                disabled={busy}
+                sx={{ borderRadius: 9999, py: 1.5, fontSize: 16 }}
+              >
+                {busy ? <CircularProgress size={22} color="inherit" /> : 'Check me in'}
+              </Button>
+              <Button
+                onClick={() => { setMode('lookup'); setWalkIn({ firstName: '', lastName: '' }); setAutofilled(false); setError(''); }}
+                sx={{ color: 'text.secondary', borderRadius: 9999 }}
+              >
+                Use a different email
+              </Button>
+            </Box>
           )}
         </Box>
       </Paper>
