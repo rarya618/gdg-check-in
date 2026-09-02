@@ -160,7 +160,7 @@ export async function createEvent(
  */
 export async function updateEvent(
   eventId: string,
-  data: Partial<Pick<GDGEvent, 'name' | 'date' | 'description' | 'status' | 'cloudCreditsUrl'>>
+  data: Partial<Pick<GDGEvent, 'name' | 'date' | 'description' | 'status' | 'cloudCreditsUrl' | 'walkInTicketTitle' | 'walkInTicketVenue'>>
 ): Promise<void> {
   const updates: Record<string, unknown> = {};
   if (data.name !== undefined) updates.name = data.name;
@@ -171,6 +171,12 @@ export async function updateEvent(
   }
   if (data.cloudCreditsUrl !== undefined) {
     updates.cloudCreditsUrl = data.cloudCreditsUrl || null;
+  }
+  if (data.walkInTicketTitle !== undefined) {
+    updates.walkInTicketTitle = data.walkInTicketTitle || null;
+  }
+  if (data.walkInTicketVenue !== undefined) {
+    updates.walkInTicketVenue = data.walkInTicketVenue || null;
   }
   await update(ref(db, `events/${eventId}`), updates);
 }
@@ -227,7 +233,8 @@ export function listenAttendees(
  */
 export async function checkInAttendee(
   eventId: string,
-  input: Pick<Attendee, 'firstName' | 'lastName' | 'email'>
+  input: Pick<Attendee, 'firstName' | 'lastName' | 'email'> &
+    Partial<Pick<Attendee, 'ticketTitle' | 'ticketVenue'>>
 ): Promise<Attendee> {
   const counterRef = ref(db, `events/${eventId}/ticketCounter`);
   let ticketNum = 1;
@@ -236,11 +243,14 @@ export async function checkInAttendee(
     return ticketNum;
   });
 
+  const { ticketTitle, ticketVenue, ...rest } = input;
   const attendee: Attendee = {
-    ...input,
+    ...rest,
     ticketNumber: `GDGWALKIN${String(ticketNum).padStart(4, '0')}`,
     checkinDate: new Date().toISOString(),
     source: 'walk-in',
+    ...(ticketTitle ? { ticketTitle } : {}),
+    ...(ticketVenue ? { ticketVenue } : {}),
   };
 
   const attendeesRef = ref(db, `events/${eventId}/attendees`);
@@ -326,29 +336,32 @@ export async function undoCheckIn(eventId: string, email: string): Promise<void>
 /**
  * Bulk-imports attendees parsed from a Bevy CSV export.
  *
- * Deduplication is by ticket number: any attendee whose `ticketNumber` already
- * exists as a key under `events/{eventId}/attendees` is skipped. This makes
- * re-importing the same CSV safe.
+ * Matching is by ticket number. New ticket numbers are inserted; existing ones
+ * are merged — CSV fields are written over the stored record, but fields the CSV
+ * doesn't carry (`checkinDate`, `cloudCreditsClickedAt`, …) are preserved. This
+ * makes re-importing safe and lets a fresh export backfill new columns.
  *
- * All new records are written in a single `update()` call so the operation is
- * atomic — partial imports cannot happen if the function throws mid-way.
+ * All writes go out in a single `update()` call so the operation is atomic —
+ * partial imports cannot happen if the function throws mid-way.
  *
- * @returns `{ imported, skipped }` counts for UI feedback.
+ * @returns `{ imported, updated }` counts for UI feedback.
  */
 export async function importBevyAttendees(
   eventId: string,
   attendees: Omit<Attendee, 'source'>[]
-): Promise<{ imported: number; skipped: number }> {
+): Promise<{ imported: number; updated: number }> {
   const snap = await get(ref(db, `events/${eventId}/attendees`));
-  const existing = snap.exists() ? new Set(Object.keys(snap.val())) : new Set<string>();
+  const existing: Record<string, Attendee> = snap.exists() ? snap.val() : {};
 
   const updates: Record<string, Attendee> = {};
   let imported = 0;
-  let skipped = 0;
+  let updated = 0;
 
   for (const a of attendees) {
-    if (existing.has(a.ticketNumber)) {
-      skipped++;
+    const prev = existing[a.ticketNumber];
+    if (prev) {
+      updates[`events/${eventId}/attendees/${a.ticketNumber}`] = { ...prev, ...a, source: 'bevy' };
+      updated++;
     } else {
       updates[`events/${eventId}/attendees/${a.ticketNumber}`] = { ...a, source: 'bevy' };
       imported++;
@@ -359,7 +372,7 @@ export async function importBevyAttendees(
     await update(ref(db), updates);
   }
 
-  return { imported, skipped };
+  return { imported, updated };
 }
 
 /**
