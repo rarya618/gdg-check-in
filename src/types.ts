@@ -101,6 +101,12 @@ export interface Team {
   /** Firebase push-key (injected on read, not stored in the node). */
   id: string;
   name: string;
+  /**
+   * Short, unique, human-readable handle used in the team's permanent
+   * check-in link (`?team=<slug>`). Lower-case letters, digits and hyphens.
+   * Printed on signage, so it is meant to outlive any single event.
+   */
+  slug?: string;
   /** ISO 8601 timestamp of creation. */
   createdAt: string;
   /**

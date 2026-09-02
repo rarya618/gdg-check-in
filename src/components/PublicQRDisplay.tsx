@@ -1,91 +1,191 @@
 import { useState, useEffect } from 'react';
-import { ref, get } from 'firebase/database';
+import { ref, onValue } from 'firebase/database';
 import { db } from '../firebase';
 import Box from '@mui/material/Box';
-import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import CircularProgress from '@mui/material/CircularProgress';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import { QRCodeSVG } from 'qrcode.react';
 import type { GDGEvent } from '../types';
 import AppLogo from './AppLogo';
 
 interface Props {
   eventId: string;
+  /**
+   * URL to encode in the QR code instead of this event's own check-in link.
+   * Used by the team permanent link, whose printed code must stay pointed at
+   * the team handle rather than at whichever event is live today.
+   */
+  qrUrl?: string;
 }
 
-const pageBg = {
-  minHeight: '100vh',
+/** The four Google colours, as the rule across the top of the screen. */
+const BRAND = ['#4285F4', '#EA4335', '#FBBC05', '#34A853'];
+
+const screen = {
+  minHeight: '100dvh',
   display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  px: 2,
-  py: 6,
-  background: 'linear-gradient(rgba(0,0,0,0.18), rgba(0,0,0,0.18)), linear-gradient(135deg, #34A853 0%, #4285F4 50%, #EA4335 100%)',
+  flexDirection: 'column',
+  bgcolor: '#fff',
+  overflow: 'hidden',
 };
 
-export default function PublicQRDisplay({ eventId }: Props) {
+/**
+ * The kiosk screen: a check-in QR code left running on a monitor at the door.
+ *
+ * Everything is sized in viewport units so the same page fills a laptop propped
+ * on a desk or a television across the room. It stays subscribed to the event,
+ * so closing check-ins from Settings changes what the door screen says without
+ * anyone touching it.
+ */
+export default function PublicQRDisplay({ eventId, qrUrl }: Props) {
   const [event, setEvent] = useState<GDGEvent | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
-  const checkInUrl = `${window.location.origin}${window.location.pathname}?event=${eventId}`;
+  const checkInUrl = qrUrl ?? `${window.location.origin}${window.location.pathname}?event=${eventId}`;
 
   useEffect(() => {
-    get(ref(db, `events/${eventId}`)).then((snap) => {
-      if (!snap.exists()) { setNotFound(true); setLoading(false); return; }
-      setEvent({ id: eventId, status: 'open', ...snap.val() });
-      setLoading(false);
-    }).catch(() => { setNotFound(true); setLoading(false); });
+    return onValue(
+      ref(db, `events/${eventId}`),
+      (snap) => {
+        if (!snap.exists()) { setNotFound(true); setLoading(false); return; }
+        setEvent({ id: eventId, status: 'open', ...snap.val() });
+        setNotFound(false);
+        setLoading(false);
+      },
+      () => { setNotFound(true); setLoading(false); }
+    );
   }, [eventId]);
 
-  if (loading) {
-    return <Box sx={pageBg}><CircularProgress sx={{ color: 'rgba(255,255,255,0.7)' }} /></Box>;
-  }
+  const rule = (
+    <Box sx={{ display: 'flex', height: { xs: 6, md: 10 }, flexShrink: 0 }}>
+      {BRAND.map((c) => (
+        <Box key={c} sx={{ flex: 1, bgcolor: c }} />
+      ))}
+    </Box>
+  );
 
-  if (notFound) {
+  const footer = (
+    <Box sx={{ display: 'flex', justifyContent: 'center', pb: { xs: 3, md: 5 }, flexShrink: 0, opacity: 0.6 }}>
+      <AppLogo size={22} />
+    </Box>
+  );
+
+  if (loading) {
     return (
-      <Box sx={pageBg}>
-        <Box sx={{ textAlign: 'center' }}>
-          <Typography variant="h3" sx={{ mb: 2 }}>🔍</Typography>
-          <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }} gutterBottom>Event not found</Typography>
-          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)' }}>This check-in link may be invalid or expired.</Typography>
-        </Box>
+      <Box sx={{ ...screen, alignItems: 'center', justifyContent: 'center' }}>
+        <CircularProgress />
       </Box>
     );
   }
 
+  if (notFound) {
+    return (
+      <Box sx={screen}>
+        {rule}
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', px: 4 }}>
+          <Typography sx={{ fontWeight: 700, fontSize: 'clamp(24px, 4vmin, 48px)', letterSpacing: '-0.02em' }}>
+            This link doesn’t lead anywhere
+          </Typography>
+          <Typography color="text.secondary" sx={{ fontSize: 'clamp(15px, 2vmin, 24px)', mt: 1.5 }}>
+            The event may have been removed. Check the link on the dashboard.
+          </Typography>
+        </Box>
+        {footer}
+      </Box>
+    );
+  }
+
+  const closed = event?.status === 'closed';
+
   return (
-    <Box sx={pageBg}>
-      <Paper elevation={0} sx={{ py: { xs: 3.5, md: 4.5 }, px: { xs: 3, md: 4 }, width: '100%', maxWidth: 380, borderRadius: 3, textAlign: 'center', border: '1px solid rgba(255,255,255,0.25)' }}>
-        <Box sx={{ mb: 0.5, display: 'flex', justifyContent: 'flex-start' }}>
-          <AppLogo />
+    <Box sx={screen}>
+      {rule}
+
+      <Box
+        sx={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          textAlign: 'center',
+          px: { xs: 3, md: 6 },
+          py: { xs: 4, md: 5 },
+          gap: { xs: 3, md: '4vmin' },
+        }}
+      >
+        <Box>
+          <Typography sx={{ fontWeight: 700, fontSize: 'clamp(26px, 5vmin, 64px)', lineHeight: 1.1, letterSpacing: '-0.025em' }}>
+            {event?.name}
+          </Typography>
+          {event?.date && (
+            <Typography color="text.secondary" sx={{ fontSize: 'clamp(15px, 2.2vmin, 28px)', mt: 1 }}>
+              {new Date(event.date + 'T00:00:00').toLocaleDateString(undefined, {
+                weekday: 'long', month: 'long', day: 'numeric',
+              })}
+            </Typography>
+          )}
         </Box>
 
-        <Typography variant="h5" sx={{ fontWeight: 800, mb: 0.5, letterSpacing: '-0.01em', textAlign: 'left' }}>
-          {event?.name}
-        </Typography>
-        {event?.date && (
-          <Typography variant="body2" color="text.secondary" sx={{ mb: event?.description ? 1 : 0, textAlign: 'left' }}>
-            {new Date(event.date + 'T00:00:00').toLocaleDateString(undefined, {
-              weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-            })}
-          </Typography>
-        )}
-        {event?.description && (
-          <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'left' }}>
-            {event.description}
-          </Typography>
-        )}
-
-        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, mt: 3 }}>
-          <Box sx={{ p: 1.5, bgcolor: 'white', borderRadius: 3, display: 'inline-flex', border: '1px solid', borderColor: 'divider' }}>
-            <QRCodeSVG value={checkInUrl} size={240} marginSize={1} />
+        {closed ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <Box
+              sx={{
+                width: 'clamp(72px, 14vmin, 160px)',
+                height: 'clamp(72px, 14vmin, 160px)',
+                borderRadius: '50%',
+                bgcolor: 'grey.100',
+                color: 'text.secondary',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                mb: 3,
+              }}
+            >
+              <LockOutlinedIcon sx={{ fontSize: 'clamp(36px, 7vmin, 80px)' }} />
+            </Box>
+            <Typography sx={{ fontWeight: 700, fontSize: 'clamp(22px, 4vmin, 52px)', letterSpacing: '-0.02em' }}>
+              Check-in is closed
+            </Typography>
+            <Typography color="text.secondary" sx={{ fontSize: 'clamp(15px, 2.2vmin, 28px)', mt: 1 }}>
+              Find a volunteer at the door.
+            </Typography>
           </Box>
-          <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            Scan to check in
-          </Typography>
-        </Box>
-      </Paper>
+        ) : (
+          <>
+            {/* The code scales with the screen — the SVG redraws crisply at any size */}
+            <Box
+              sx={{
+                width: 'clamp(220px, 44vmin, 560px)',
+                p: 'clamp(12px, 1.6vmin, 28px)',
+                bgcolor: '#fff',
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 'clamp(12px, 2vmin, 28px)',
+                '& svg': { display: 'block', width: '100%', height: 'auto' },
+              }}
+            >
+              <QRCodeSVG value={checkInUrl} size={512} level="M" marginSize={0} />
+            </Box>
+
+            <Box>
+              <Typography sx={{ fontWeight: 700, fontSize: 'clamp(20px, 3.4vmin, 44px)', letterSpacing: '-0.02em' }}>
+                Scan to check in
+              </Typography>
+              <Typography
+                color="text.secondary"
+                sx={{ fontFamily: 'monospace', fontSize: 'clamp(11px, 1.5vmin, 18px)', mt: 1, wordBreak: 'break-all' }}
+              >
+                {checkInUrl}
+              </Typography>
+            </Box>
+          </>
+        )}
+      </Box>
+
+      {footer}
     </Box>
   );
 }

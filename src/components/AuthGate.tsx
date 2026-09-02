@@ -4,6 +4,7 @@ import { auth, googleProvider } from '../firebase';
 import { getAdmin, seedAdmin } from '../db';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import Alert from '@mui/material/Alert';
 import CircularProgress from '@mui/material/CircularProgress';
@@ -12,12 +13,39 @@ import type { User } from 'firebase/auth';
 import type { AdminRole } from '../types';
 import AppLogo from './AppLogo';
 
-const FEATURES = [
-  { label: 'Check in pre-registered and walk-in attendees' },
-  { label: 'Works seamlessly with Bevy' },
-  { label: 'Merch draw' },
-  { label: 'Team roles and event access control' },
-];
+/** The four Google colours, as the rule across the top of the card. */
+const BRAND = ['#4285F4', '#EA4335', '#FBBC05', '#34A853'];
+
+const page = {
+  minHeight: '100dvh',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  bgcolor: '#F1F3F4',
+  px: 2,
+  py: 5,
+};
+
+const card = {
+  width: '100%',
+  maxWidth: 400,
+  borderRadius: 4,
+  overflow: 'hidden',
+  border: '1px solid',
+  borderColor: 'divider',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+};
+
+/** The brand rule that tops every card on this screen. */
+function BrandRule() {
+  return (
+    <Box sx={{ display: 'flex', height: 5 }}>
+      {BRAND.map((c) => (
+        <Box key={c} sx={{ flex: 1, bgcolor: c }} />
+      ))}
+    </Box>
+  );
+}
 
 const SUPERADMIN_EMAIL = 'russalarya@gmail.com';
 
@@ -66,7 +94,7 @@ export default function AuthGate({ children }: Props) {
       const admin = await getAdmin(u.email);
       if (!admin) {
         await signOut(auth);
-        setDenied(`${u.email} is not authorised to access this app.`);
+        setDenied(`${u.email} isn’t on the list for this app. Ask an organiser to add you, then sign in again.`);
         setUser(null);
         setRole(null);
         setTeamId(undefined);
@@ -112,115 +140,52 @@ export default function AuthGate({ children }: Props) {
 
   if (!user || !role) {
     return (
-      <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: { xs: 'column-reverse', md: 'row' } }}>
-
-        {/* Left panel */}
-        <Box sx={{
-          flex: { md: '0 0 65%' },
-          background: 'linear-gradient(rgba(0,0,0,0.18), rgba(0,0,0,0.18)), linear-gradient(135deg, #34A853 0%, #4285F4 50%, #EA4335 100%)',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          px: { xs: 4, md: 7, lg: 10 },
-          py: { xs: 5, md: 8 },
-        }}>
-          {/* Logo — desktop only */}
-          <Box sx={{ mb: 5, alignSelf: 'flex-start', bgcolor: '#fff', borderRadius: 9999, pl: 2, pr: 3, pt: 0.75, pb: 0, display: { xs: 'none', md: 'inline-flex' }, alignItems: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
-            <AppLogo />
-          </Box>
-
-          {/* Tagline */}
-          <Typography
-            variant="h3"
-            sx={{
-              fontWeight: 800,
-              color: '#fff',
-              lineHeight: 1.15,
-              mb: 1.5,
-              fontSize: { xs: '1.9rem', md: '2.4rem', lg: '2.75rem' },
-              letterSpacing: '-0.02em',
-            }}
-          >
-            Check-in for<br />GDG events.
-          </Typography>
-          <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.8)', mb: 5, fontSize: 15, maxWidth: 420 }}>
-            Built for organiser teams. Simple for attendees.
-          </Typography>
-
-          {/* Feature list */}
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {FEATURES.map((f) => (
-              <Box key={f.label} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.75 }}>
-                <Box sx={{
-                  mt: '3px',
-                  flexShrink: 0,
-                  width: 18,
-                  height: 18,
-                  borderRadius: '50%',
-                  bgcolor: 'rgba(255, 255, 255, 0.2)',
-                  border: '1.5px solid rgba(255, 255, 255, 0.5)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}>
-                  <Box component="span" sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#fff', display: 'block' }} />
-                </Box>
-                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', lineHeight: 1.55, fontSize: 14 }}>
-                  {f.label}
-                </Typography>
-              </Box>
-            ))}
-          </Box>
-        </Box>
-
-        {/* Right panel */}
-        <Box sx={{
-          flex: 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          bgcolor: 'background.default',
-          px: { xs: 3, md: 6 },
-          py: { xs: 5, md: 8 },
-        }}>
-          <Box sx={{ width: '100%', maxWidth: 340 }}>
-            {/* Logo — mobile only */}
-            <Box sx={{ mb: 3, display: { xs: 'inline-flex', md: 'none' }, bgcolor: '#fff', borderRadius: 9999, pl: 2, pr: 3, pt: 0.75, pb: 0, alignItems: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
-              <AppLogo />
+      <Box sx={page}>
+        <Paper elevation={0} sx={card}>
+          <BrandRule />
+          <Box sx={{ p: { xs: 3, sm: 4 } }}>
+            <Box sx={{ ml: -1.5, mb: 2.5 }}>
+              <AppLogo size={20} />
             </Box>
-            <Typography variant="h5" sx={{ fontWeight: 800, mb: 0.75, letterSpacing: '-0.01em' }}>
+
+            <Typography sx={{ fontWeight: 700, fontSize: 22, lineHeight: 1.25, letterSpacing: '-0.02em' }}>
               Sign in
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 4, lineHeight: 1.6 }}>
-              Access is restricted to authorised team members. Sign in with your Google account to continue.
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              For organisers and volunteers working the door.
             </Typography>
-            <Button
-              fullWidth
-              variant="outlined"
-              size="large"
-              onClick={handleSignIn}
-              disabled={signing}
-              startIcon={<GoogleIcon />}
-              sx={{
-                borderColor: 'divider',
-                color: 'text.primary',
-                '&:hover': { borderColor: 'primary.main', bgcolor: 'primary.light' },
-                borderRadius: 9999,
-                py: 1.25,
-                px: 2.5,
-                fontWeight: 600,
-              }}
-            >
-              {signing ? 'Signing in…' : 'Sign in with Google'}
-            </Button>
-            {(denied || signInError) && (
-              <Alert severity="error" sx={{ mt: 2.5, textAlign: 'left', borderRadius: 2 }}>
-                {denied || signInError}
-              </Alert>
-            )}
-          </Box>
-        </Box>
 
+            <Box sx={{ mt: 3.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Button
+                fullWidth
+                variant="outlined"
+                onClick={handleSignIn}
+                disabled={signing}
+                startIcon={signing ? <CircularProgress size={16} color="inherit" /> : <GoogleIcon />}
+                sx={{
+                  borderColor: 'divider',
+                  color: 'text.primary',
+                  '&:hover': { borderColor: 'primary.main', bgcolor: 'primary.light' },
+                  borderRadius: 9999,
+                  py: 1.5,
+                  fontSize: 16,
+                }}
+              >
+                {signing ? 'Signing in…' : 'Continue with Google'}
+              </Button>
+
+              {(denied || signInError) && (
+                <Alert severity="error" sx={{ borderRadius: 2 }}>
+                  {denied || signInError}
+                </Alert>
+              )}
+
+              <Typography variant="body2" color="text.secondary" sx={{ fontSize: 12.5, lineHeight: 1.5 }}>
+                Use the Google account an organiser added for you. Attendees don’t sign in — they scan the QR code at the door.
+              </Typography>
+            </Box>
+          </Box>
+        </Paper>
       </Box>
     );
   }

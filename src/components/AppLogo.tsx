@@ -3,11 +3,43 @@ import Typography from '@mui/material/Typography';
 
 import bracketsLogo from '../assets/Brackets.png';
 
-export default function AppLogo() {
+interface Props {
+  /** Height of the brackets mark in px; the wordmark scales with it. */
+  size?: number;
+  /** Hide the wordmark and show the brackets alone. */
+  markOnly?: boolean;
+}
+
+/**
+ * The app lockup: the GDG brackets followed by the product name.
+ *
+ * The two sit on a shared centre line and scale together, so the logo can be
+ * dropped into a sidebar or a full-screen kiosk without re-tuning the spacing.
+ */
+export default function AppLogo({ size = 22, markOnly = false }: Props) {
   return (
-    <Box component="div" sx={{ display: "flex", justifyContent: "center" }}>
-      <Box component="img" src={bracketsLogo} alt="GDG Brackets" sx={{ height: 20, width: 'auto', flexShrink: 0, ml:1, mr: 1.25, my: 0.75}} />
-      <Typography variant="h6" sx={{ fontWeight: 700 }} gutterBottom>Check-In</Typography>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: size * 0.06, px: 1.5 }}>
+      <Box
+        component="img"
+        src={bracketsLogo}
+        alt="GDG"
+        sx={{ height: size, width: 'auto', display: 'block', flexShrink: 0 }}
+      />
+      {!markOnly && (
+        <Typography
+          component="span"
+          sx={{
+            fontWeight: 700,
+            fontSize: size * 1.0,
+            lineHeight: 1,
+            letterSpacing: '-0.045em',
+            color: 'text.primary',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Check-in
+        </Typography>
+      )}
     </Box>
-  )
+  );
 }

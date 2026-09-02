@@ -10,7 +10,16 @@ import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
 import Drawer from '@mui/material/Drawer';
+import ListItemIcon from '@mui/material/ListItemIcon';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import PeopleAltOutlinedIcon from '@mui/icons-material/PeopleAltOutlined';
+import HowToRegOutlinedIcon from '@mui/icons-material/HowToRegOutlined';
+import RedeemOutlinedIcon from '@mui/icons-material/RedeemOutlined';
+import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
+import EventOutlinedIcon from '@mui/icons-material/EventOutlined';
+import AdminPanelSettingsOutlinedIcon from '@mui/icons-material/AdminPanelSettingsOutlined';
+import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
+import LogoutOutlinedIcon from '@mui/icons-material/LogoutOutlined';
 import MenuIcon from '@mui/icons-material/Menu';
 import CloseIcon from '@mui/icons-material/Close';
 
@@ -27,6 +36,7 @@ import EventSettings from './components/EventSettings';
 import TeamsPage from './components/TeamsPage';
 import AppLogo from './components/AppLogo';
 import LuckyDraw from './components/LuckyDraw';
+import TeamLanding from './components/TeamLanding';
 
 import { listenEvents, listenTeam } from './db';
 import type { GDGEvent, AdminRole } from './types';
@@ -39,13 +49,47 @@ type EventTab = 'checkin' | 'dashboard' | 'settings' | 'draw';
 
 const SIDEBAR_WIDTH = 280;
 
-// URL-based routing: the app serves three distinct surfaces from one origin.
-// ?event=<id>            → ConsumerCheckIn (public self-service form)
-// ?event=<id>&display=qr → PublicQRDisplay (kiosk QR code screen)
-// (no params)            → AdminApp (authenticated staff interface)
+/** Label and icon for each tab inside an event. */
+const EVENT_TAB_META = {
+  dashboard: { label: 'Dashboard', Icon: PeopleAltOutlinedIcon },
+  checkin: { label: 'Check in', Icon: HowToRegOutlinedIcon },
+  draw: { label: 'Merch draw', Icon: RedeemOutlinedIcon },
+  settings: { label: 'Settings', Icon: SettingsOutlinedIcon },
+} as const;
+
+/** Label and icon for each top-level view. */
+const VIEW_META = {
+  events: { label: 'Events', Icon: EventOutlinedIcon },
+  organisers: { label: 'Organisers', Icon: AdminPanelSettingsOutlinedIcon },
+  teams: { label: 'Teams', Icon: GroupsOutlinedIcon },
+} as const;
+
+const ROLE_LABEL: Record<AdminRole, string> = {
+  superadmin: 'Super admin',
+  organiser: 'Organiser',
+  team_member: 'Team member',
+};
+
+/** Shared styling for a sidebar nav row. */
+const navItemSx = (selected: boolean) => ({
+  borderRadius: 9999,
+  px: 1.5,
+  py: 0.75,
+  color: selected ? 'primary.main' : 'text.primary',
+  '&.Mui-selected': { bgcolor: '#E8F0FE', '&:hover': { bgcolor: '#D9E7FD' } },
+  '&:hover': { bgcolor: 'grey.100' },
+});
+
+// URL-based routing: the app serves several distinct surfaces from one origin.
+// ?team=<slug>            → TeamLanding (permanent per-team link, resolves to the live event)
+// ?team=<slug>&display=qr → TeamLanding in kiosk mode
+// ?event=<id>             → ConsumerCheckIn (public self-service form)
+// ?event=<id>&display=qr  → PublicQRDisplay (kiosk QR code screen)
+// (no params)             → AdminApp (authenticated staff interface)
 const searchParams = new URLSearchParams(window.location.search);
 const consumerEventId = searchParams.get('event');
-const isQRDisplay = consumerEventId && searchParams.get('display') === 'qr';
+const teamHandle = searchParams.get('team');
+const isQRDisplay = searchParams.get('display') === 'qr';
 
 /**
  * Main authenticated admin shell.
@@ -112,138 +156,123 @@ function AdminApp({ user, role, teamId, onSignOut }: { user: User; role: AdminRo
 
   const sidebarContent = (isMobile: boolean) => (
     <>
-      {/* Mobile sidebar header: logo + close button */}
-      {isMobile ? (
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-          <Box
-            component="button"
-            onClick={() => handleNavClick(() => { setView('events'); setActiveEvent(null); })}
-            sx={{ display: 'flex', alignItems: 'center', gap: 0.5, border: 'none', bgcolor: 'transparent', cursor: 'pointer', p: 0, textAlign: 'left' }}
-          >
-            <AppLogo />
-          </Box>
-          <IconButton onClick={() => setMobileOpen(false)} aria-label="Close menu" size="small" sx={{ color: 'text.secondary', mt: -1 }}>
-            <CloseIcon fontSize="small" />
-          </IconButton>
-        </Box>
-      ) : (
-        /* Desktop logo */
+      {/* Logo, with a close affordance in the mobile drawer */}
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
         <Box
           component="button"
           onClick={() => handleNavClick(() => { setView('events'); setActiveEvent(null); })}
-          sx={{ display: 'flex', alignItems: 'center', gap: 0.5, border: 'none', bgcolor: 'transparent', cursor: 'pointer', p: 0, mb: 1, textAlign: 'left' }}
+          sx={{ display: 'flex', alignItems: 'center', gap: 0.5, border: 'none', bgcolor: 'transparent', cursor: 'pointer', p: 0, textAlign: 'left' }}
         >
           <AppLogo />
         </Box>
-      )}
+        {isMobile && (
+          <IconButton onClick={() => setMobileOpen(false)} aria-label="Close menu" size="small" sx={{ color: 'text.secondary' }}>
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        )}
+      </Box>
 
-      {/* Event context block */}
+      {/* Which event you're inside, and the way back out */}
       {view === 'event-detail' && activeEvent && (
-        <>
-          <Box
-            sx={{
-              bgcolor: 'grey.50',
-              border: '1px solid',
-              borderColor: 'divider',
-              borderRadius: 1,
-              px: 2,
-              py: 2,
-              mb: 2,
-            }}
+        <Box sx={{ mb: 2 }}>
+          <Button
+            onClick={() => handleNavClick(handleBack)}
+            startIcon={<ArrowBackIcon sx={{ fontSize: 16 }} />}
+            sx={{ color: 'text.secondary', fontWeight: 400, fontSize: 13, px: 1, ml: -1, mb: 1.25, borderRadius: 9999, '& .MuiButton-startIcon': { mr: 0.6 } }}
           >
-            <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.75, lineHeight: 1.3 }}>
-              {activeEvent.name}
+            All events
+          </Button>
+          <Typography sx={{ fontWeight: 700, fontSize: 17, lineHeight: 1.3, letterSpacing: '-0.01em' }}>
+            {activeEvent.name}
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.75 }}>
+            <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: isOpen ? '#34A853' : 'grey.400', flexShrink: 0 }} />
+            <Typography variant="body2" color="text.secondary" sx={{ fontSize: 12.5 }}>
+              {isOpen ? 'Check-ins open' : 'Check-ins closed'}
             </Typography>
-            {activeEvent.description && (
-              <Typography variant="body1" color="text.secondary" sx={{ fontSize: 14, mb: 2, lineHeight: 1.4 }}>
-                {activeEvent.description}
-              </Typography>
-            )}
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 0.5 }}>
-              <Typography variant="subtitle2" color="text.secondary" sx={{ fontSize: 12 }}>
-                {new Date(activeEvent.date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-              </Typography>
-              <Chip
-                label={isOpen ? 'Open' : 'Closed'}
-                size="small"
-                sx={{
-                  height: 20,
-                  fontSize: 11,
-                  fontWeight: 600,
-                  bgcolor: isOpen ? 'secondary.light' : 'grey.200',
-                  color: isOpen ? 'secondary.dark' : 'text.secondary',
-                  '& .MuiChip-label': { px: 1 },
-                }}
-              />
-            </Box>
           </Box>
-          <Divider sx={{ mb: 1 }} />
-        </>
+          <Typography variant="body2" color="text.secondary" sx={{ fontSize: 12.5, mt: 0.25 }}>
+            {new Date(activeEvent.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+          </Typography>
+        </Box>
       )}
 
-      {/* Nav items */}
+      <Divider sx={{ mb: 1.5, mx: -2 }} />
+
+      {/* Nav */}
       <List disablePadding sx={{ flex: 1 }}>
         {view === 'event-detail' ? (
-          <>
-            {(isTeamMember
-              ? (['checkin'] as EventTab[])
-              : (['dashboard', 'checkin', 'draw', 'settings'] as EventTab[])
-            ).map((t) => (
-              <ListItem key={t} disablePadding sx={{ mb: 0.5 }}>
+          (isTeamMember ? (['checkin'] as EventTab[]) : (['dashboard', 'checkin', 'draw', 'settings'] as EventTab[])).map((t) => {
+            const { label, Icon } = EVENT_TAB_META[t];
+            const selected = tab === t;
+            return (
+              <ListItem key={t} disablePadding sx={{ mb: 0.25 }}>
                 <ListItemButton
-                  selected={tab === t}
+                  selected={selected}
                   onClick={() => handleNavClick(() => setTab(t))}
-                  sx={{ borderRadius: 9999, px: 2.5, '&.Mui-selected': { bgcolor: 'primary.50', color: 'primary.main' } }}
+                  sx={navItemSx(selected)}
                 >
+                  <ListItemIcon sx={{ minWidth: 34, color: 'inherit' }}>
+                    <Icon sx={{ fontSize: 20 }} />
+                  </ListItemIcon>
                   <ListItemText
                     primary={
-                      t === 'dashboard' ? (
+                      t === 'dashboard' && checkedInCount > 0 ? (
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                          Dashboard
-                          {checkedInCount > 0 && (
-                            <Chip label={checkedInCount} size="small" color="primary" sx={{ height: 18, fontSize: 11, '& .MuiChip-label': { px: 0.75 } }} />
-                          )}
+                          {label}
+                          <Chip label={checkedInCount} size="small" color="primary" sx={{ height: 18, fontSize: 11, '& .MuiChip-label': { px: 0.75 } }} />
                         </Box>
-                      ) : t === 'checkin' ? 'Check In' : t === 'draw' ? 'Merch Draw' : 'Settings'
+                      ) : (
+                        label
+                      )
                     }
-                    slotProps={{ primary: { sx: { fontWeight: 700, fontSize: 14 } } }}
+                    slotProps={{ primary: { sx: { fontWeight: selected ? 700 : 600, fontSize: 14 } } }}
                   />
                 </ListItemButton>
               </ListItem>
-            ))}
-          </>
+            );
+          })
         ) : (
-          <>
-            {(isSuperAdmin
-              ? (['events', 'organisers', 'teams'] as View[])
-              : isOrganiser
-              ? (['events', 'organisers'] as View[])
-              : (['events'] as View[])
-            ).map((v) => (
-              <ListItem key={v} disablePadding sx={{ mb: 0.5 }}>
-                <ListItemButton
-                  selected={view === v}
-                  onClick={() => handleNavClick(() => setView(v))}
-                  sx={{ borderRadius: 9999, px: 2.5, '&.Mui-selected': { bgcolor: 'primary.50', color: 'primary.main' } }}
-                >
-                  <ListItemText
-                    primary={v === 'events' ? 'Events' : v === 'organisers' ? 'Organisers' : 'Teams'}
-                    slotProps={{ primary: { sx: { fontWeight: 700, fontSize: 14 } } }}
-                  />
+          (isSuperAdmin
+            ? (['events', 'organisers', 'teams'] as View[])
+            : isOrganiser
+            ? (['events', 'organisers'] as View[])
+            : (['events'] as View[])
+          ).map((v) => {
+            const { label, Icon } = VIEW_META[v as keyof typeof VIEW_META];
+            const selected = view === v;
+            return (
+              <ListItem key={v} disablePadding sx={{ mb: 0.25 }}>
+                <ListItemButton selected={selected} onClick={() => handleNavClick(() => setView(v))} sx={navItemSx(selected)}>
+                  <ListItemIcon sx={{ minWidth: 34, color: 'inherit' }}>
+                    <Icon sx={{ fontSize: 20 }} />
+                  </ListItemIcon>
+                  <ListItemText primary={label} slotProps={{ primary: { sx: { fontWeight: selected ? 700 : 600, fontSize: 14 } } }} />
                 </ListItemButton>
               </ListItem>
-            ))}
-          </>
+            );
+          })
         )}
       </List>
 
-      {/* Bottom actions */}
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, pt: 2 }}>
+      {/* Who's signed in */}
+      <Box sx={{ pt: 1.5, mt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+        <Box sx={{ px: 1.5, mb: 1 }}>
+          <Typography sx={{ fontSize: 13, fontWeight: 600 }} noWrap>{user.email}</Typography>
+          <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>{ROLE_LABEL[role]}</Typography>
+        </Box>
         <Button
           onClick={onSignOut}
-          variant="outlined"
+          startIcon={<LogoutOutlinedIcon sx={{ fontSize: 18 }} />}
           fullWidth
-          sx={{ color: 'error.main', fontSize: 14, fontWeight: 700, px: 2, py: 1, borderRadius: 9999, borderColor: 'error.main', '&:hover': { bgcolor: 'error.light', borderColor: 'error.main' } }}
+          sx={{
+            justifyContent: 'flex-start',
+            borderRadius: 9999,
+            px: 1.5,
+            fontSize: 14,
+            color: 'text.secondary',
+            '&:hover': { bgcolor: 'error.light', color: 'error.main' },
+          }}
         >
           Sign out
         </Button>
@@ -327,12 +356,13 @@ function AdminApp({ user, role, teamId, onSignOut }: { user: User; role: AdminRo
           ml: { xs: 0, md: `${SIDEBAR_WIDTH}px` },
           flex: 1,
           pb: 8,
-          pt: { xs: 4, md: 0 },
+          pt: { xs: 4, md: 1.5 },
           minWidth: 0,
         }}
       >
+        {/* Mobile-only back link — on desktop the sidebar carries it */}
         {view === 'event-detail' && activeEvent && (
-          <Box sx={{ px: 4, pt: { xs: 3, md: 3 }, pb: 0 }}>
+          <Box sx={{ display: { xs: 'block', md: 'none' }, px: 2.5, pt: 3, pb: 0 }}>
             <Button
               onClick={() => handleNavClick(handleBack)}
               startIcon={<ArrowBackIcon fontSize="small" />}
@@ -377,11 +407,15 @@ function AdminApp({ user, role, teamId, onSignOut }: { user: User; role: AdminRo
 
 /**
  * Root component. Decides which surface to render based on URL query params:
- * - `?event=<id>&display=qr` → PublicQRDisplay (kiosk mode)
- * - `?event=<id>`            → ConsumerCheckIn (attendee self-service)
- * - (none)                   → AuthGate → AdminApp
+ * - `?team=<slug>[&display=qr]` → TeamLanding (permanent link → the team's live event)
+ * - `?event=<id>&display=qr`    → PublicQRDisplay (kiosk mode)
+ * - `?event=<id>`               → ConsumerCheckIn (attendee self-service)
+ * - (none)                      → AuthGate → AdminApp
  */
 export default function App() {
+  if (teamHandle) {
+    return <TeamLanding handle={teamHandle} display={isQRDisplay} />;
+  }
   if (isQRDisplay && consumerEventId) {
     return <PublicQRDisplay eventId={consumerEventId} />;
   }
