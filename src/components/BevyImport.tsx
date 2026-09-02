@@ -24,12 +24,15 @@ type ParsedRow = Omit<Attendee, 'source'>;
 /**
  * Parses a Bevy attendee export CSV into structured rows.
  *
- * Expected column order (0-indexed):
- *   0: Order Number, 1: Ticket Number, 2: First Name, 3: Last Name,
- *   4: Email, 5: Job Title, 6: Company, 7: Ticket Type
+ * Columns are located by header name (case-insensitive), not by position, so
+ * Bevy exports with extra or reordered columns import correctly. Recognised
+ * headers: `Order number`, `Ticket number`, `First Name`, `Last Name`, `Email`,
+ * `Title` / `Job Title`, `Company`, `Ticket Type`, `Ticket title`,
+ * `Ticket venue`, `Checkin Date (UTC)`.
  *
  * Rows are skipped if they lack a ticket number or email, or if the email is
- * the internal Bevy support address (`gdg-support@google.com`).
+ * the internal Bevy support address (`gdg-support@google.com`). A non-empty
+ * `Checkin Date (UTC)` seeds the attendee's check-in state.
  *
  * Uses a hand-rolled RFC-4180 field parser instead of a library to avoid
  * dependencies and to handle Bevy's specific quoting style reliably.
@@ -65,26 +68,59 @@ function parseCSV(text: string): { rows: ParsedRow[]; skippedRows: number } {
     return fields;
   }
 
-  // Skip header row
+  // Map header names -> column index (case-insensitive)
+  const headers = parseFields(lines[0]).map((h) => h.trim().toLowerCase());
+  const idx = (...names: string[]): number => {
+    for (const n of names) {
+      const i = headers.indexOf(n.toLowerCase());
+      if (i !== -1) return i;
+    }
+    return -1;
+  };
+  const col = {
+    orderNumber: idx('order number'),
+    ticketNumber: idx('ticket number'),
+    firstName: idx('first name'),
+    lastName: idx('last name'),
+    email: idx('email'),
+    jobTitle: idx('job title', 'title'),
+    company: idx('company'),
+    ticketType: idx('ticket type'),
+    ticketTitle: idx('ticket title'),
+    ticketVenue: idx('ticket venue'),
+    checkinDate: idx('checkin date (utc)', 'checkin date'),
+  };
+
   const dataLines = lines.slice(1);
   const rows: ParsedRow[] = [];
   let skippedRows = 0;
 
+  const at = (f: string[], i: number) => (i >= 0 ? f[i]?.trim() ?? '' : '');
+
   for (const line of dataLines) {
     const f = parseFields(line);
-    const orderNumber = f[0]?.trim() ?? '';
-    const ticketNumber = f[1]?.trim() ?? '';
-    const firstName = f[2]?.trim() ?? '';
-    const lastName = f[3]?.trim() ?? '';
-    const email = f[4]?.trim() ?? '';
-    const jobTitle = f[5]?.trim() ?? '';
-    const company = f[6]?.trim() ?? '';
-    const ticketType = f[7]?.trim() ?? '';
+    const orderNumber = at(f, col.orderNumber);
+    const ticketNumber = at(f, col.ticketNumber);
+    const firstName = at(f, col.firstName);
+    const lastName = at(f, col.lastName);
+    const email = at(f, col.email);
+    const jobTitle = at(f, col.jobTitle);
+    const company = at(f, col.company);
+    const ticketType = at(f, col.ticketType);
+    const ticketTitle = at(f, col.ticketTitle);
+    const ticketVenue = at(f, col.ticketVenue);
+    const rawCheckin = at(f, col.checkinDate);
 
     // Skip rows without a ticket number or email
     if (!ticketNumber || !email) { skippedRows++; continue; }
     // Skip known system entries
     if (email.toLowerCase() === 'gdg-support@google.com') { skippedRows++; continue; }
+
+    let checkinDate = '';
+    if (rawCheckin) {
+      const d = new Date(rawCheckin.replace(' ', 'T'));
+      if (!isNaN(d.getTime())) checkinDate = d.toISOString();
+    }
 
     rows.push({
       ticketNumber,
@@ -95,6 +131,9 @@ function parseCSV(text: string): { rows: ParsedRow[]; skippedRows: number } {
       ...(jobTitle ? { jobTitle } : {}),
       ...(company ? { company } : {}),
       ...(ticketType ? { ticketType } : {}),
+      ...(ticketTitle ? { ticketTitle } : {}),
+      ...(ticketVenue ? { ticketVenue } : {}),
+      ...(checkinDate ? { checkinDate } : {}),
     });
   }
 
@@ -107,15 +146,15 @@ function parseCSV(text: string): { rows: ParsedRow[]; skippedRows: number } {
  *   2. **Preview** — parsed rows shown in a table before committing.
  *   3. **Result** — success banner with imported / skipped counts.
  *
- * Already-imported tickets are skipped server-side by `importBevyAttendees`,
- * so re-uploading the same CSV is safe.
+ * Existing tickets are merged server-side by `importBevyAttendees` (check-in
+ * state preserved), so re-uploading the same CSV is safe.
  */
 export default function BevyImport({ eventId }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [parsed, setParsed] = useState<ParsedRow[] | null>(null);
   const [parseError, setParseError] = useState('');
   const [importing, setImporting] = useState(false);
-  const [result, setResult] = useState<{ imported: number; skipped: number } | null>(null);
+  const [result, setResult] = useState<{ imported: number; updated: number } | null>(null);
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -177,7 +216,7 @@ export default function BevyImport({ eventId }: Props) {
         <Box>
           <Alert severity="success" sx={{ borderRadius: 2, mb: 2 }}>
             <strong>{result.imported}</strong> attendee{result.imported !== 1 ? 's' : ''} imported.
-            {result.skipped > 0 && ` ${result.skipped} already existed and were skipped.`}
+            {result.updated > 0 && ` ${result.updated} existing ${result.updated !== 1 ? 'records were' : 'record was'} updated.`}
           </Alert>
           <Button variant="outlined" size="small" onClick={handleReset} sx={{ borderRadius: 9999 }}>
             Import another file
@@ -186,7 +225,7 @@ export default function BevyImport({ eventId }: Props) {
       ) : parsed ? (
         <Box>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-            {parsed.length} attendee{parsed.length !== 1 ? 's' : ''} ready to import. Already-imported tickets will be skipped.
+            {parsed.length} attendee{parsed.length !== 1 ? 's' : ''} ready to import. Existing tickets will be updated without losing check-in status.
           </Typography>
           <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2, mb: 2, maxHeight: 280, overflow: 'auto' }}>
             <Table size="small" stickyHeader>
