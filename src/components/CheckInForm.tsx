@@ -1,12 +1,12 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import TextField from '@mui/material/TextField';
 import Button from '@mui/material/Button';
 import Alert from '@mui/material/Alert';
-import Divider from '@mui/material/Divider';
 import CircularProgress from '@mui/material/CircularProgress';
+import CheckIcon from '@mui/icons-material/Check';
 import { checkInAttendee, findAttendeeByEmail, markCheckedIn } from '../db';
 import type { Attendee } from '../types';
 
@@ -17,6 +17,42 @@ interface Props {
 
 type Mode = 'lookup' | 'found-pre' | 'found-duplicate' | 'walk-in';
 
+/** How many recent check-ins to keep on screen. */
+const RECENT_LIMIT = 8;
+
+function localTime(iso: string) {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+/** One row in the details block shown before confirming a check-in. */
+function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, py: 1 }}>
+      <Typography variant="body2" color="text.secondary">{label}</Typography>
+      <Typography
+        variant="body2"
+        sx={{ fontWeight: 600, fontFamily: mono ? 'monospace' : undefined, textAlign: 'right', wordBreak: 'break-all' }}
+      >
+        {value}
+      </Typography>
+    </Box>
+  );
+}
+
+/**
+ * Staff check-in desk for a single event.
+ *
+ * Runs as a loop rather than a wizard: every check-in confirms in a banner above
+ * an already-focused, already-empty email field, so the next person in the queue
+ * can be looked up without touching the mouse. The last few check-ins stay listed
+ * alongside as a record of what just happened.
+ *
+ * Modes:
+ * - `lookup`          — email field; the resting state between people.
+ * - `found-pre`       — email matched a pre-registered attendee; confirm to check in.
+ * - `found-duplicate` — email matched someone already checked in.
+ * - `walk-in`         — email is unknown; collect a name and check them in at the door.
+ */
 export default function CheckInForm({ eventId, onCheckedIn }: Props) {
   const [email, setEmail] = useState('');
   const [lookupKey, setLookupKey] = useState('');
@@ -25,23 +61,31 @@ export default function CheckInForm({ eventId, onCheckedIn }: Props) {
   const [mode, setMode] = useState<Mode>('lookup');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState<Attendee | null>(null);
+  const [recent, setRecent] = useState<Attendee[]>([]);
+  const emailRef = useRef<HTMLInputElement>(null);
 
-  function handleReset() {
+  /** Returns to the resting state with the cursor back in the email field. */
+  function resetToLookup() {
     setEmail('');
     setLookupKey('');
     setFoundAttendee(null);
     setWalkIn({ firstName: '', lastName: '' });
     setMode('lookup');
     setError('');
-    setSuccess(null);
+    requestAnimationFrame(() => emailRef.current?.focus());
+  }
+
+  function recordCheckIn(attendee: Attendee) {
+    onCheckedIn(attendee);
+    setRecent((prev) => [attendee, ...prev].slice(0, RECENT_LIMIT));
+    resetToLookup();
   }
 
   async function handleLookup(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = email.trim();
-    if (!trimmed) { setError('Enter an email address.'); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) { setError('Please enter a valid email address.'); return; }
+    if (!trimmed) { setError('Enter an email address to look up.'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) { setError('That doesn’t look like an email address.'); return; }
 
     setBusy(true);
     setError('');
@@ -58,7 +102,7 @@ export default function CheckInForm({ eventId, onCheckedIn }: Props) {
         setMode('found-pre');
       }
     } catch {
-      setError('Lookup failed. Please try again.');
+      setError('Lookup failed. Check your connection and try again.');
     }
     setBusy(false);
   }
@@ -69,10 +113,9 @@ export default function CheckInForm({ eventId, onCheckedIn }: Props) {
     setError('');
     try {
       const checked = await markCheckedIn(eventId, lookupKey, foundAttendee);
-      onCheckedIn(checked);
-      setSuccess(checked);
+      recordCheckIn(checked);
     } catch {
-      setError('Check-in failed. Please try again.');
+      setError('Check-in failed. Try again.');
     }
     setBusy(false);
   }
@@ -80,7 +123,7 @@ export default function CheckInForm({ eventId, onCheckedIn }: Props) {
   async function handleWalkIn(e: React.FormEvent) {
     e.preventDefault();
     const { firstName, lastName } = walkIn;
-    if (!firstName.trim() || !lastName.trim()) { setError('First and last name are required.'); return; }
+    if (!firstName.trim() || !lastName.trim()) { setError('Both names are needed to check someone in.'); return; }
     setBusy(true);
     setError('');
     try {
@@ -89,175 +132,258 @@ export default function CheckInForm({ eventId, onCheckedIn }: Props) {
         lastName: lastName.trim(),
         email: email.trim(),
       });
-      onCheckedIn(attendee);
-      setSuccess(attendee);
+      recordCheckIn(attendee);
     } catch {
-      setError('Check-in failed. Please try again.');
+      setError('Check-in failed. Try again.');
     }
     setBusy(false);
   }
 
-  if (success) {
-    return (
-      <Box sx={{ maxWidth: 440, mx: 'auto', mt: 4, px: 2 }}>
-        <Paper elevation={1} sx={{ p: 4, textAlign: 'center', borderRadius: 4 }}>
-          <Box sx={{ width: 64, height: 64, borderRadius: '50%', bgcolor: 'secondary.light', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2.5 }}>
-            <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="#34A853" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-          </Box>
-          <Typography variant="h5" sx={{ fontWeight: 700 }} gutterBottom>Checked in!</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>Welcome, {success.firstName}!</Typography>
-
-          <Box sx={{ bgcolor: 'grey.50', borderRadius: 2.5, p: 2.5, mb: 3, textAlign: 'left' }}>
-            {[
-              { label: 'Ticket', value: success.ticketNumber, mono: true, color: 'primary.main' },
-              { label: 'Name', value: `${success.firstName} ${success.lastName}` },
-              { label: 'Email', value: success.email },
-              { label: 'Time', value: new Date(success.checkinDate!).toUTCString() },
-            ].map((row, i) => (
-              <Box key={row.label}>
-                {i > 0 && <Divider sx={{ my: 1.25, borderColor: 'grey.100' }} />}
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="body2" color="text.secondary">{row.label}</Typography>
-                  <Typography
-                    variant="body2"
-                    sx={{ fontWeight: row.mono ? 700 : 500, fontFamily: row.mono ? 'monospace' : undefined }}
-                    color={row.color ?? 'text.primary'}
-                  >
-                    {row.value}
-                  </Typography>
-                </Box>
-              </Box>
-            ))}
-          </Box>
-
-          <Button fullWidth variant="contained" size="large" onClick={handleReset} sx={{ borderRadius: 9999, px: 2.5 }}>
-            Check in another attendee
-          </Button>
-        </Paper>
-      </Box>
-    );
-  }
+  const last = recent[0];
 
   return (
-    <Box sx={{ maxWidth: 440, mx: 'auto', mt: 4, px: 2 }}>
-      <Paper elevation={1} sx={{ p: 3.5, pb: 4, borderRadius: 2 }}>
-        <Typography variant="h6" sx={{ fontWeight: 700 }} gutterBottom>Check In Attendee</Typography>
+    <Box sx={{ pb: 8 }}>
+      <Box sx={{ px: { xs: 2.5, md: 4 }, py: 1.75, mb: 3 }}>
+        <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.01em' }}>Check in</Typography>
+        <Typography variant="body2" color="text.secondary">
+          Look someone up by email. Not on the list? They go straight in as a walk-in.
+        </Typography>
+      </Box>
 
-        {/* Step 1: email lookup */}
-        {(mode === 'lookup' || mode === 'found-duplicate') && (
-          <Box component="form" onSubmit={handleLookup} sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1.5 }}>
-            <TextField
-              label="Email"
-              type="email"
-              value={email}
-              onChange={(e) => { setEmail(e.target.value); setError(''); setMode('lookup'); }}
-              placeholder="jane@example.com"
-              fullWidth
-            />
-            {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
-
-            {mode === 'found-duplicate' && foundAttendee && (
-              <Alert severity="warning" sx={{ borderRadius: 2 }}>
-                <strong>{foundAttendee.firstName} {foundAttendee.lastName}</strong> was already checked in at{' '}
-                {new Date(foundAttendee.checkinDate!).toUTCString()}.
-              </Alert>
-            )}
-
-            <Button
-              type="submit"
-              variant="contained"
-              size="large"
-              disabled={busy}
-              fullWidth
-              sx={{ mt: 2, fontWeight: 700, borderRadius: 9999, py: 1.25 }}
+      <Box
+        sx={{
+          px: { xs: 2.5, md: 4 },
+          display: 'flex',
+          flexDirection: { xs: 'column', md: 'row' },
+          alignItems: 'flex-start',
+          gap: 2.5,
+        }}
+      >
+        {/* The desk */}
+        <Paper
+          elevation={0}
+          sx={{
+            flex: 1,
+            width: '100%',
+            minWidth: 0,
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: 3,
+            p: { xs: 2.5, md: 3 },
+          }}
+        >
+          {/* Confirmation of the person just checked in — the form stays live underneath */}
+          {last && mode === 'lookup' && (
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1.5,
+                bgcolor: '#E6F4EA',
+                borderRadius: 2.5,
+                px: 2,
+                py: 1.5,
+                mb: 2.5,
+              }}
             >
-              {busy ? <CircularProgress size={22} color="inherit" /> : 'Look up'}
-            </Button>
-          </Box>
-        )}
+              <Box
+                sx={{
+                  width: 28, height: 28, borderRadius: '50%', bgcolor: '#34A853', color: '#fff',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                }}
+              >
+                <CheckIcon sx={{ fontSize: 18 }} />
+              </Box>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography sx={{ fontWeight: 700, fontSize: 14.5 }}>
+                  {last.firstName} {last.lastName} is in
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ fontSize: 12.5 }}>
+                  {last.ticketNumber} at {localTime(last.checkinDate!)}
+                </Typography>
+              </Box>
+            </Box>
+          )}
 
-        {/* Step 2a: found pre-registered Bevy attendee */}
-        {mode === 'found-pre' && foundAttendee && (
-          <Box sx={{ mt: 1.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Alert severity="info" sx={{ borderRadius: 2 }}>
-              Found pre-registered attendee
-            </Alert>
-            <Box sx={{ bgcolor: 'grey.50', borderRadius: 2, p: 2 }}>
-              {[
-                { label: 'Ticket', value: foundAttendee.ticketNumber, mono: true },
-                { label: 'Name', value: `${foundAttendee.firstName} ${foundAttendee.lastName}` },
-                { label: 'Email', value: foundAttendee.email },
-              ].map((row, i) => (
-                <Box key={row.label}>
-                  {i > 0 && <Divider sx={{ my: 1, borderColor: 'grey.100' }} />}
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="body2" color="text.secondary">{row.label}</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600, fontFamily: row.mono ? 'monospace' : undefined }}>
-                      {row.value}
+          {/* Step 1 — email lookup */}
+          {(mode === 'lookup' || mode === 'found-duplicate') && (
+            <Box component="form" onSubmit={handleLookup} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <TextField
+                inputRef={emailRef}
+                label="Email"
+                type="email"
+                value={email}
+                onChange={(e) => { setEmail(e.target.value); setError(''); setMode('lookup'); }}
+                placeholder="jane@example.com"
+                autoFocus
+                fullWidth
+                slotProps={{ htmlInput: { autoCapitalize: 'off', autoCorrect: 'off', spellCheck: false } }}
+                sx={{ '& .MuiInputBase-input': { fontSize: 17, py: 1.75 } }}
+              />
+
+              {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
+
+              {mode === 'found-duplicate' && foundAttendee && (
+                <Alert severity="warning" sx={{ borderRadius: 2 }}>
+                  <strong>{foundAttendee.firstName} {foundAttendee.lastName}</strong> already checked in at{' '}
+                  {localTime(foundAttendee.checkinDate!)}. Send them through.
+                </Alert>
+              )}
+
+              <Button
+                type="submit"
+                variant="contained"
+                size="large"
+                disabled={busy}
+                fullWidth
+                sx={{ borderRadius: 9999, py: 1.5, fontSize: 16 }}
+              >
+                {busy ? <CircularProgress size={22} color="inherit" /> : 'Look up'}
+              </Button>
+            </Box>
+          )}
+
+          {/* Step 2a — pre-registered, confirm */}
+          {mode === 'found-pre' && foundAttendee && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box>
+                <Typography variant="body2" color="text.secondary">On the list</Typography>
+                <Typography sx={{ fontWeight: 700, fontSize: 26, letterSpacing: '-0.02em', lineHeight: 1.2, mt: 0.25 }}>
+                  {foundAttendee.firstName} {foundAttendee.lastName}
+                </Typography>
+              </Box>
+              <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2.5, px: 2, py: 0.5 }}>
+                <DetailRow label="Ticket" value={foundAttendee.ticketNumber} mono />
+                <DetailRow label="Email" value={foundAttendee.email} />
+                {foundAttendee.ticketTitle && <DetailRow label="Ticket type" value={foundAttendee.ticketTitle} />}
+              </Box>
+              {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
+              <Button
+                variant="contained"
+                size="large"
+                disabled={busy}
+                onClick={handleConfirmBevy}
+                fullWidth
+                sx={{ borderRadius: 9999, py: 1.5, fontSize: 16 }}
+              >
+                {busy ? <CircularProgress size={22} color="inherit" /> : `Check in ${foundAttendee.firstName}`}
+              </Button>
+              <Button onClick={resetToLookup} sx={{ color: 'text.secondary', borderRadius: 9999 }}>
+                Someone else
+              </Button>
+            </Box>
+          )}
+
+          {/* Step 2b — unknown email, take them as a walk-in */}
+          {mode === 'walk-in' && (
+            <Box component="form" onSubmit={handleWalkIn} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box>
+                <Typography variant="body2" color="text.secondary">Not on the list</Typography>
+                <Typography sx={{ fontWeight: 700, fontSize: 20, letterSpacing: '-0.01em', mt: 0.25 }}>
+                  Add {email} as a walk-in
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+                <TextField
+                  label="First name"
+                  value={walkIn.firstName}
+                  onChange={(e) => { setWalkIn((w) => ({ ...w, firstName: e.target.value })); setError(''); }}
+                  placeholder="Jane"
+                  autoFocus
+                  fullWidth
+                />
+                <TextField
+                  label="Last name"
+                  value={walkIn.lastName}
+                  onChange={(e) => { setWalkIn((w) => ({ ...w, lastName: e.target.value })); setError(''); }}
+                  placeholder="Doe"
+                  fullWidth
+                />
+              </Box>
+              {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
+              <Button
+                type="submit"
+                variant="contained"
+                size="large"
+                disabled={busy}
+                fullWidth
+                sx={{ borderRadius: 9999, py: 1.5, fontSize: 16 }}
+              >
+                {busy ? <CircularProgress size={22} color="inherit" /> : 'Check in as walk-in'}
+              </Button>
+              <Button onClick={resetToLookup} sx={{ color: 'text.secondary', borderRadius: 9999 }}>
+                Try a different email
+              </Button>
+            </Box>
+          )}
+        </Paper>
+
+        {/* What just happened — so staff can answer "did you get me?" without leaving the tab */}
+        <Paper
+          elevation={0}
+          sx={{
+            flex: 1,
+            width: '100%',
+            minWidth: 0,
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: 3,
+            p: { xs: 2.5, md: 3 },
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 2, mb: recent.length ? 1 : 0 }}>
+            <Typography sx={{ fontWeight: 700, fontSize: 15 }}>Checked in from this desk</Typography>
+            {recent.length > 0 && (
+              <Typography variant="body2" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                {recent.length}
+              </Typography>
+            )}
+          </Box>
+
+          {recent.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              People you check in here will be listed as you go. The full list lives on the Dashboard.
+            </Typography>
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+              {recent.map((a, i) => (
+                <Box
+                  key={a.ticketNumber}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2,
+                    py: 1.25,
+                    borderTop: i === 0 ? 'none' : '1px solid',
+                    borderColor: 'divider',
+                  }}
+                >
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography sx={{ fontWeight: 700, fontSize: 14, lineHeight: 1.35 }}>
+                      {a.firstName} {a.lastName}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: 12.5 }} noWrap>
+                      {a.email}
                     </Typography>
                   </Box>
+                  {a.source === 'walk-in' && (
+                    <Typography variant="body2" sx={{ fontSize: 11.5, fontWeight: 600, color: '#137333' }}>
+                      Walk-in
+                    </Typography>
+                  )}
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ fontSize: 12.5, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}
+                  >
+                    {a.checkinDate ? localTime(a.checkinDate) : ''}
+                  </Typography>
                 </Box>
               ))}
             </Box>
-            {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
-            <Button
-              variant="contained"
-              size="large"
-              disabled={busy}
-              onClick={handleConfirmBevy}
-              fullWidth
-              sx={{ fontWeight: 700, borderRadius: 9999, py: 1.25 }}
-            >
-              {busy ? <CircularProgress size={22} color="inherit" /> : `Check in ${foundAttendee.firstName}`}
-            </Button>
-            <Button variant="text" size="small" onClick={handleReset} sx={{ color: 'text.secondary' }}>
-              Check in a different person
-            </Button>
-          </Box>
-        )}
-
-        {/* Step 2b: not found — walk-in form */}
-        {mode === 'walk-in' && (
-          <Box component="form" onSubmit={handleWalkIn} sx={{ mt: 1.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Alert severity="info" sx={{ borderRadius: 2 }}>
-              Not pre-registered, checking in as walk-in
-            </Alert>
-            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-              <TextField
-                label="First Name"
-                value={walkIn.firstName}
-                onChange={(e) => { setWalkIn((w) => ({ ...w, firstName: e.target.value })); setError(''); }}
-                placeholder="Jane"
-                fullWidth
-              />
-              <TextField
-                label="Last Name"
-                value={walkIn.lastName}
-                onChange={(e) => { setWalkIn((w) => ({ ...w, lastName: e.target.value })); setError(''); }}
-                placeholder="Doe"
-                fullWidth
-              />
-            </Box>
-            <TextField label="Email" type="email" value={email} disabled fullWidth />
-            {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
-            <Button
-              type="submit"
-              variant="contained"
-              size="large"
-              disabled={busy}
-              fullWidth
-              sx={{ mt: 2, fontWeight: 700, borderRadius: 9999, py: 1.25 }}
-            >
-              {busy ? <CircularProgress size={22} color="inherit" /> : 'Check in as walk-in'}
-            </Button>
-            <Button variant="text" size="small" onClick={handleReset} sx={{ color: 'text.secondary' }}>
-              Back
-            </Button>
-          </Box>
-        )}
-      </Paper>
+          )}
+        </Paper>
+      </Box>
     </Box>
   );
 }
