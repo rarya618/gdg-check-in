@@ -36,6 +36,7 @@ import EventSettings from './components/EventSettings';
 import TeamsPage from './components/TeamsPage';
 import AppLogo from './components/AppLogo';
 import LuckyDraw from './components/LuckyDraw';
+import TeamLanding from './components/TeamLanding';
 
 import { listenEvents, listenTeam } from './db';
 import type { GDGEvent, AdminRole } from './types';
@@ -79,13 +80,16 @@ const navItemSx = (selected: boolean) => ({
   '&:hover': { bgcolor: 'grey.100' },
 });
 
-// URL-based routing: the app serves three distinct surfaces from one origin.
-// ?event=<id>            → ConsumerCheckIn (public self-service form)
-// ?event=<id>&display=qr → PublicQRDisplay (kiosk QR code screen)
-// (no params)            → AdminApp (authenticated staff interface)
+// URL-based routing: the app serves several distinct surfaces from one origin.
+// ?team=<slug>            → TeamLanding (permanent per-team link, resolves to the live event)
+// ?team=<slug>&display=qr → TeamLanding in kiosk mode
+// ?event=<id>             → ConsumerCheckIn (public self-service form)
+// ?event=<id>&display=qr  → PublicQRDisplay (kiosk QR code screen)
+// (no params)             → AdminApp (authenticated staff interface)
 const searchParams = new URLSearchParams(window.location.search);
 const consumerEventId = searchParams.get('event');
-const isQRDisplay = consumerEventId && searchParams.get('display') === 'qr';
+const teamHandle = searchParams.get('team');
+const isQRDisplay = searchParams.get('display') === 'qr';
 
 /**
  * Main authenticated admin shell.
@@ -403,11 +407,15 @@ function AdminApp({ user, role, teamId, onSignOut }: { user: User; role: AdminRo
 
 /**
  * Root component. Decides which surface to render based on URL query params:
- * - `?event=<id>&display=qr` → PublicQRDisplay (kiosk mode)
- * - `?event=<id>`            → ConsumerCheckIn (attendee self-service)
- * - (none)                   → AuthGate → AdminApp
+ * - `?team=<slug>[&display=qr]` → TeamLanding (permanent link → the team's live event)
+ * - `?event=<id>&display=qr`    → PublicQRDisplay (kiosk mode)
+ * - `?event=<id>`               → ConsumerCheckIn (attendee self-service)
+ * - (none)                      → AuthGate → AdminApp
  */
 export default function App() {
+  if (teamHandle) {
+    return <TeamLanding handle={teamHandle} display={isQRDisplay} />;
+  }
   if (isQRDisplay && consumerEventId) {
     return <PublicQRDisplay eventId={consumerEventId} />;
   }

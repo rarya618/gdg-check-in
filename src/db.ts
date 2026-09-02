@@ -14,7 +14,7 @@
  *       assignedTeams/
  *         {teamId}         — true (presence flag)
  *   teams/
- *     {teamId}/            — Team record (name, createdAt)
+ *     {teamId}/            — Team record (name, slug, createdAt)
  *       members/
  *         {emailKey}       — true (presence flag)
  *
@@ -429,13 +429,91 @@ export function listenTeams(callback: (teams: Team[]) => void): () => void {
 }
 
 /**
+ * Turns a team name into a URL-safe handle: `GDG Kuala Lumpur` → `gdg-kuala-lumpur`.
+ * Anything that is not a letter or digit becomes a single hyphen.
+ */
+export function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+}
+
+/**
  * Creates a new team.
+ * @param slug Optional permanent link handle. Callers are responsible for
+ *   checking it is unique across teams before passing it.
  * @returns The Firebase push-key (`teamId`) of the new team.
  */
-export async function createTeam(name: string): Promise<string> {
+export async function createTeam(name: string, slug?: string): Promise<string> {
   const newRef = push(ref(db, 'teams'));
-  await set(newRef, { name, createdAt: new Date().toISOString() });
+  await set(newRef, {
+    name,
+    createdAt: new Date().toISOString(),
+    ...(slug ? { slug } : {}),
+  });
   return newRef.key!;
+}
+
+/**
+ * Sets the team's permanent-link handle. Pass an empty string to clear it,
+ * which falls the link back to the raw team ID.
+ *
+ * Changing a slug breaks every sign already printed with the old one, so the UI
+ * treats this as a deliberate, confirmed edit.
+ */
+export async function setTeamSlug(teamId: string, slug: string): Promise<void> {
+  await set(ref(db, `teams/${teamId}/slug`), slug || null);
+}
+
+/**
+ * Resolves the public `?team=` parameter to a team.
+ *
+ * Accepts either a slug or a raw team push-key, so links printed before a team
+ * was given a slug keep working. Reads the whole `teams` node once — RTDB has no
+ * index on `slug` and the collection is small.
+ *
+ * @returns The team, or `null` if nothing matches.
+ */
+export async function findTeamByHandle(handle: string): Promise<Team | null> {
+  const snap = await get(ref(db, 'teams'));
+  if (!snap.exists()) return null;
+  const data = snap.val() as Record<string, Omit<Team, 'id'>>;
+
+  if (data[handle]) return { ...data[handle], id: handle };
+
+  const wanted = handle.toLowerCase();
+  const found = Object.entries(data).find(([, t]) => t.slug?.toLowerCase() === wanted);
+  return found ? { ...found[1], id: found[0] } : null;
+}
+
+/**
+ * Picks the event a team's permanent link should currently point at.
+ *
+ * Only open events assigned to the team are candidates. Of those, an event
+ * happening today or later wins over one already past, and within each group the
+ * one nearest today wins — so a link left running through a weekend of events
+ * moves on by itself, without anyone reprinting the code.
+ *
+ * @returns The live event, or `null` when the team has nothing open.
+ */
+export function pickLiveEventForTeam(events: GDGEvent[], teamId: string): GDGEvent | null {
+  const today = new Date().toISOString().slice(0, 10);
+  const candidates = events.filter(
+    (e) => e.assignedTeams?.[teamId] === true && e.status === 'open'
+  );
+  if (candidates.length === 0) return null;
+
+  const upcoming = candidates.filter((e) => e.date >= today);
+  if (upcoming.length > 0) {
+    // Soonest first.
+    return upcoming.sort((a, b) => a.date.localeCompare(b.date))[0];
+  }
+  // Nothing ahead — fall back to the most recently held open event.
+  return candidates.sort((a, b) => b.date.localeCompare(a.date))[0];
 }
 
 /**

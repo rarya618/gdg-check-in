@@ -11,6 +11,12 @@ import AppLogo from './AppLogo';
 
 interface Props {
   eventId: string;
+  /**
+   * URL to encode in the QR code instead of this event's own check-in link.
+   * Used by the team permanent link, whose printed code must stay pointed at
+   * the team handle rather than at whichever event is live today.
+   */
+  qrUrl?: string;
 }
 
 /** The four Google colours, as the rule across the top of the screen. */
@@ -32,12 +38,12 @@ const screen = {
  * so closing check-ins from Settings changes what the door screen says without
  * anyone touching it.
  */
-export default function PublicQRDisplay({ eventId }: Props) {
+export default function PublicQRDisplay({ eventId, qrUrl }: Props) {
   const [event, setEvent] = useState<GDGEvent | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
-  const checkInUrl = `${window.location.origin}${window.location.pathname}?event=${eventId}`;
+  const checkInUrl = qrUrl ?? `${window.location.origin}${window.location.pathname}?event=${eventId}`;
 
   useEffect(() => {
     return onValue(

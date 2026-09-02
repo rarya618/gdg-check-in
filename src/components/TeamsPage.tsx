@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
@@ -24,7 +24,13 @@ import CloseIcon from '@mui/icons-material/Close';
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import PersonRemoveOutlinedIcon from '@mui/icons-material/PersonRemoveOutlined';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import { listenTeams, listenAdmins, listenEvents, createTeam, deleteTeam, addTeamMember, removeTeamMember, setTeamGlobalAccess } from '../db';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import CheckIcon from '@mui/icons-material/Check';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import DownloadIcon from '@mui/icons-material/Download';
+import QrCode2Icon from '@mui/icons-material/QrCode2';
+import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
+import { listenTeams, listenAdmins, listenEvents, createTeam, deleteTeam, addTeamMember, removeTeamMember, setTeamGlobalAccess, setTeamSlug, slugify, pickLiveEventForTeam } from '../db';
 import type { Team, Admin, GDGEvent, AdminRole } from '../types';
 
 interface Props {
@@ -66,6 +72,215 @@ function GroupHeading({ children, count }: { children: React.ReactNode; count?: 
   );
 }
 
+
+/**
+ * A team's permanent check-in link: one URL and one QR code, printed once.
+ *
+ * The code encodes `?team=<slug>`, never an event ID, so the same standee works
+ * every month — the link resolves at scan time to the team's soonest open event.
+ * That makes the slug the one thing here that must not casually change, which is
+ * why editing it is behind an explicit "Edit" and warns about printed material.
+ */
+function TeamLinkPanel({
+  team,
+  teams,
+  canEdit,
+  liveEvent,
+}: {
+  team: Team;
+  teams: Team[];
+  canEdit: boolean;
+  liveEvent: GDGEvent | null;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(team.slug ?? '');
+  const [slugError, setSlugError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [copied, setCopied] = useState<'link' | 'display' | null>(null);
+  const [showQR, setShowQR] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const handle = team.slug || team.id;
+  const base = `${window.location.origin}${window.location.pathname}`;
+  const url = `${base}?team=${handle}`;
+  const displayUrl = `${url}&display=qr`;
+
+  function copy(text: string, key: 'link' | 'display') {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(key);
+      setTimeout(() => setCopied((c) => (c === key ? null : c)), 2000);
+    });
+  }
+
+  async function handleSaveSlug() {
+    const next = slugify(draft);
+    if (!next) { setSlugError('Use letters or numbers — “gdg-kl”, for example.'); return; }
+    const clash = teams.some(
+      (t) => t.id !== team.id && (t.slug?.toLowerCase() === next || t.id === next)
+    );
+    if (clash) { setSlugError('Another team already uses that handle.'); return; }
+    setSaving(true);
+    try {
+      await setTeamSlug(team.id, next);
+      setEditing(false);
+      setSlugError('');
+    } catch {
+      setSlugError('Could not save it. Try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleDownload() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const a = document.createElement('a');
+    a.href = canvas.toDataURL('image/png');
+    a.download = `checkin-qr-${handle}.png`;
+    a.click();
+  }
+
+  return (
+    <Box sx={{ mt: 2, mx: 2.5, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+      <Typography sx={{ fontWeight: 700, fontSize: 13.5, mb: 0.5 }}>Permanent check-in link</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ fontSize: 12.5, mb: 1.5 }}>
+        Print this once. It always opens whichever of this team’s events has check-in open.
+      </Typography>
+
+      {editing ? (
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
+          <TextField
+            size="small"
+            label="Link handle"
+            value={draft}
+            onChange={(e) => { setDraft(e.target.value); setSlugError(''); }}
+            placeholder="gdg-kl"
+            error={!!slugError}
+            helperText={slugError || 'Changing this breaks codes already printed.'}
+            sx={{ flex: 1, minWidth: 200 }}
+          />
+          <Button
+            variant="contained"
+            onClick={handleSaveSlug}
+            disabled={saving}
+            sx={{ borderRadius: 9999, px: 2.5, mt: 0.25 }}
+          >
+            {saving ? <CircularProgress size={18} color="inherit" /> : 'Save'}
+          </Button>
+          <Button
+            onClick={() => { setEditing(false); setDraft(team.slug ?? ''); setSlugError(''); }}
+            disabled={saving}
+            sx={{ borderRadius: 9999, px: 2, mt: 0.25, color: 'text.secondary' }}
+          >
+            Cancel
+          </Button>
+        </Box>
+      ) : (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
+          <Typography
+            sx={{ fontFamily: 'monospace', fontSize: 12.5, color: 'text.secondary', wordBreak: 'break-all', flex: 1, minWidth: 180 }}
+          >
+            {url}
+          </Typography>
+          <Button
+            onClick={() => copy(url, 'link')}
+            startIcon={copied === 'link' ? <CheckIcon sx={{ fontSize: 16 }} /> : <ContentCopyIcon sx={{ fontSize: 16 }} />}
+            sx={{ borderRadius: 9999, px: 2, fontSize: 13.5, flexShrink: 0, color: copied === 'link' ? '#137333' : 'primary.main' }}
+          >
+            {copied === 'link' ? 'Copied' : 'Copy'}
+          </Button>
+          <Button
+            onClick={() => setShowQR(true)}
+            startIcon={<QrCode2Icon sx={{ fontSize: 18 }} />}
+            sx={{ borderRadius: 9999, px: 2, fontSize: 13.5, flexShrink: 0 }}
+          >
+            QR code
+          </Button>
+          {canEdit && (
+            <Button
+              onClick={() => { setEditing(true); setDraft(team.slug || slugify(team.name)); }}
+              sx={{ borderRadius: 9999, px: 1.5, fontSize: 13.5, flexShrink: 0, color: 'text.secondary' }}
+            >
+              {team.slug ? 'Edit handle' : 'Set handle'}
+            </Button>
+          )}
+        </Box>
+      )}
+
+      {/* What the link resolves to right now — the answer to "is the sign live?" */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: liveEvent ? '#34A853' : 'grey.400', flexShrink: 0 }} />
+        <Typography variant="body2" color="text.secondary" sx={{ fontSize: 12.5 }}>
+          {liveEvent ? <>Now pointing at <strong>{liveEvent.name}</strong></> : 'Nothing open — scans see the team’s holding screen.'}
+        </Typography>
+      </Box>
+
+      <Dialog
+        open={showQR}
+        onClose={() => setShowQR(false)}
+        maxWidth="xs"
+        fullWidth
+        slotProps={{ paper: { sx: { borderRadius: 4, maxWidth: 420 } } }}
+      >
+        <DialogTitle sx={{ fontWeight: 700, fontSize: 18, pr: 6, pt: 2.5, pb: 1.5 }}>
+          {team.name} — permanent code
+          <IconButton onClick={() => setShowQR(false)} size="small" aria-label="Close" sx={{ position: 'absolute', right: 12, top: 14, color: 'text.secondary' }}>
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ pb: 3, display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5, pt: 0.5 }}>
+            <Box sx={{ p: 2.5, bgcolor: '#fff', borderRadius: 3, border: '1px solid', borderColor: 'divider', lineHeight: 0 }}>
+              <QRCodeSVG value={url} size={200} level="M" />
+            </Box>
+            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
+              Safe to print. It never needs regenerating for a new event.
+            </Typography>
+            {/* Hidden canvas used only for PNG export */}
+            <Box sx={{ display: 'none' }}>
+              <QRCodeCanvas ref={canvasRef} value={url} size={512} level="M" />
+            </Box>
+          </Box>
+
+          <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 3, px: 2, py: 1.5, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography sx={{ fontWeight: 700, fontSize: 14 }}>Door screen</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ fontSize: 12.5 }}>
+                Leave this open on a monitor — it follows the team from event to event.
+              </Typography>
+            </Box>
+            <Tooltip title={copied === 'display' ? 'Copied' : 'Copy door screen link'} placement="top">
+              <IconButton
+                onClick={() => copy(displayUrl, 'display')}
+                size="small"
+                aria-label="Copy door screen link"
+                sx={{ flexShrink: 0, color: copied === 'display' ? '#137333' : 'text.secondary' }}
+              >
+                {copied === 'display' ? <CheckIcon sx={{ fontSize: 18 }} /> : <ContentCopyIcon sx={{ fontSize: 16 }} />}
+              </IconButton>
+            </Tooltip>
+            <Button
+              onClick={() => window.open(displayUrl, '_blank', 'noopener')}
+              startIcon={<OpenInNewIcon sx={{ fontSize: 16 }} />}
+              sx={{ borderRadius: 9999, px: 2, flexShrink: 0 }}
+            >
+              Open
+            </Button>
+          </Box>
+
+          <Button
+            onClick={handleDownload}
+            startIcon={<DownloadIcon sx={{ fontSize: 18 }} />}
+            sx={{ borderRadius: 9999, alignSelf: 'center', px: 2.5, color: 'text.secondary' }}
+          >
+            Download the code as a PNG
+          </Button>
+        </DialogContent>
+      </Dialog>
+    </Box>
+  );
+}
+
 /**
  * Teams: the unit that connects people to events.
  *
@@ -103,6 +318,21 @@ export default function TeamsPage({ userEmail, isSuperAdmin, canEdit }: Props) {
 
   function keyToEmail(key: string) { return key.replace(/,/g, '.'); }
 
+  /**
+   * Derives a link handle from the team name, adding `-2`, `-3`, … if another
+   * team already holds it. New teams get one immediately so their permanent
+   * link is printable without a second step.
+   */
+  function uniqueSlug(name: string): string {
+    const taken = new Set(teams.flatMap((t) => [t.slug?.toLowerCase(), t.id]).filter(Boolean) as string[]);
+    const base = slugify(name) || 'team';
+    if (!taken.has(base)) return base;
+    for (let i = 2; i < 100; i++) {
+      if (!taken.has(`${base}-${i}`)) return `${base}-${i}`;
+    }
+    return `${base}-${Date.now()}`;
+  }
+
   function getMembersForTeam(team: Team): Admin[] {
     const memberEmails = new Set(Object.keys(team.members ?? {}).map(keyToEmail));
     return admins.filter((a) => memberEmails.has(a.email));
@@ -129,7 +359,7 @@ export default function TeamsPage({ userEmail, isSuperAdmin, canEdit }: Props) {
     setCreating(true);
     setCreateError('');
     try {
-      const id = await createTeam(name);
+      const id = await createTeam(name, uniqueSlug(name));
       setNewTeamName('');
       setShowCreate(false);
       setExpandedTeam(id);
@@ -374,6 +604,14 @@ export default function TeamsPage({ userEmail, isSuperAdmin, canEdit }: Props) {
                           </Box>
                         ))
                       )}
+
+                      {/* The one link that outlives every event */}
+                      <TeamLinkPanel
+                        team={team}
+                        teams={teams}
+                        canEdit={canEdit}
+                        liveEvent={pickLiveEventForTeam(events, team.id)}
+                      />
 
                       {/* Permissions and deletion, for super admins only */}
                       {isSuperAdmin && (
