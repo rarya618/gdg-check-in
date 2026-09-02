@@ -17,7 +17,8 @@ import DialogContent from '@mui/material/DialogContent';
 import Alert from '@mui/material/Alert';
 import IconButton from '@mui/material/IconButton';
 import SearchIcon from '@mui/icons-material/Search';
-import LinkIcon from '@mui/icons-material/Link';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import QrCodeIcon from '@mui/icons-material/QrCode';
 import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
@@ -301,41 +302,33 @@ function AddAttendeeDialog({ eventId, open, onClose, walkInTicketTitle, walkInTi
 }
 
 /**
- * Dialog that surfaces the event's public check-in URL as a QR code.
+ * Dialog that surfaces the event's two public URLs.
  *
- * Provides three sharing options:
- * - **Copy link** — the consumer check-in URL (`?event=<id>`).
- * - **Display URL** — the kiosk QR display URL (`?event=<id>&display=qr`).
- * - **Download PNG** — renders a hidden high-res QRCodeCanvas and exports it as a 512×512 PNG.
+ * They serve different people, so each gets its own row:
+ * - **Check-in link** (`?event=<id>`) — what attendees scan or open on their phone.
+ *   Shown as the QR code, and downloadable as a 512×512 PNG for slides and signage.
+ * - **Door screen** (`?event=<id>&display=qr`) — the kiosk page to leave open on a
+ *   monitor at the entrance; opens in a new tab.
  */
 function QRDialog({ eventId, open, onClose }: { eventId: string; open: boolean; onClose: () => void }) {
-  const [copied, setCopied] = useState(false);
-  const [copiedDisplay, setCopiedDisplay] = useState(false);
+  const [copied, setCopied] = useState<'checkin' | 'display' | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const base = `${window.location.origin}${window.location.pathname}`;
   const checkInUrl = `${base}?event=${eventId}`;
   const displayUrl = `${base}?event=${eventId}&display=qr`;
 
-  function handleCopy() {
-    navigator.clipboard.writeText(checkInUrl).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  }
-
-  function handleCopyDisplay() {
-    navigator.clipboard.writeText(displayUrl).then(() => {
-      setCopiedDisplay(true);
-      setTimeout(() => setCopiedDisplay(false), 2000);
+  function copy(text: string, key: 'checkin' | 'display') {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(key);
+      setTimeout(() => setCopied((c) => (c === key ? null : c)), 2000);
     });
   }
 
   function handleDownload() {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const url = canvas.toDataURL('image/png');
     const a = document.createElement('a');
-    a.href = url;
+    a.href = canvas.toDataURL('image/png');
     a.download = `checkin-qr-${eventId}.png`;
     a.click();
   }
@@ -346,59 +339,82 @@ function QRDialog({ eventId, open, onClose }: { eventId: string; open: boolean; 
       onClose={onClose}
       maxWidth="xs"
       fullWidth
-      slotProps={{ paper: { sx: { borderRadius: 3, maxWidth: 360 } } }}
+      slotProps={{ paper: { sx: { borderRadius: 4, maxWidth: 420 } } }}
     >
-      <DialogTitle sx={{ fontWeight: 700, pr: 6, pt: 2, pb: 1 }}>
-        Check-in QR Code
-        <IconButton onClick={onClose} size="small" sx={{ position: 'absolute', right: 12, top: 10, color: 'text.secondary' }}>
+      <DialogTitle sx={{ fontWeight: 700, fontSize: 18, pr: 6, pt: 2.5, pb: 1.5 }}>
+        Check-in link
+        <IconButton onClick={onClose} size="small" aria-label="Close" sx={{ position: 'absolute', right: 12, top: 14, color: 'text.secondary' }}>
           <CloseIcon fontSize="small" />
         </IconButton>
       </DialogTitle>
-      <DialogContent sx={{ pb: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-        <Box sx={{ p: 2, bgcolor: 'white', borderRadius: 2, border: '1px solid', borderColor: 'divider', display: 'inline-flex' }}>
-          <QRCodeSVG value={checkInUrl} size={220} />
+
+      <DialogContent sx={{ pb: 3, display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+        {/* The code itself, on white with its own quiet zone */}
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5, pt: 0.5 }}>
+          <Box sx={{ p: 2.5, bgcolor: '#fff', borderRadius: 3, border: '1px solid', borderColor: 'divider', lineHeight: 0 }}>
+            <QRCodeSVG value={checkInUrl} size={200} level="M" />
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
+            Attendees scan this to check themselves in.
+          </Typography>
+          {/* Hidden canvas used only for PNG export */}
+          <Box sx={{ display: 'none' }}>
+            <QRCodeCanvas ref={canvasRef} value={checkInUrl} size={512} level="M" />
+          </Box>
         </Box>
-        {/* Hidden canvas used only for PNG export */}
-        <Box sx={{ display: 'none' }}>
-          <QRCodeCanvas ref={canvasRef} value={checkInUrl} size={512} />
-        </Box>
-        <Box sx={{ width: '100%', bgcolor: 'grey.50', borderRadius: 2, p: 1.5, wordBreak: 'break-all' }}>
-          <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>{checkInUrl}</Typography>
-        </Box>
-        <Box sx={{ display: 'flex', gap: 1.5, width: '100%' }}>
-          <Tooltip title={copied ? 'Copied!' : 'Copy check-in link'} placement="top">
+
+        <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 3, px: 2, py: 0.5 }}>
+          {/* For attendees */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 1.5 }}>
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography sx={{ fontWeight: 700, fontSize: 14 }}>For attendees</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'monospace', fontSize: 12, wordBreak: 'break-all' }}>
+                {checkInUrl}
+              </Typography>
+            </Box>
             <Button
-              variant={copied ? 'contained' : 'outlined'}
-              color={copied ? 'success' : 'primary'}
-              startIcon={<LinkIcon fontSize="small" />}
-              onClick={handleCopy}
-              fullWidth
-              sx={{ borderRadius: 9999, fontWeight: 700 }}
+              onClick={() => copy(checkInUrl, 'checkin')}
+              startIcon={copied === 'checkin' ? <CheckIcon fontSize="small" /> : <ContentCopyIcon sx={{ fontSize: 16 }} />}
+              sx={{ borderRadius: 9999, px: 2, flexShrink: 0, color: copied === 'checkin' ? '#137333' : 'primary.main' }}
             >
-              {copied ? 'Copied!' : 'Copy link'}
+              {copied === 'checkin' ? 'Copied' : 'Copy'}
             </Button>
-          </Tooltip>
-          <Tooltip title={copiedDisplay ? 'Copied!' : 'Copy public display URL'} placement="top">
+          </Box>
+
+          {/* For the door */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography sx={{ fontWeight: 700, fontSize: 14 }}>Door screen</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ fontSize: 12.5 }}>
+                A full-screen version of this code to leave open on a monitor.
+              </Typography>
+            </Box>
+            <Tooltip title={copied === 'display' ? 'Copied' : 'Copy door screen link'} placement="top">
+              <IconButton
+                onClick={() => copy(displayUrl, 'display')}
+                size="small"
+                aria-label="Copy door screen link"
+                sx={{ flexShrink: 0, color: copied === 'display' ? '#137333' : 'text.secondary' }}
+              >
+                {copied === 'display' ? <CheckIcon sx={{ fontSize: 18 }} /> : <ContentCopyIcon sx={{ fontSize: 16 }} />}
+              </IconButton>
+            </Tooltip>
             <Button
-              variant={copiedDisplay ? 'contained' : 'outlined'}
-              color={copiedDisplay ? 'success' : 'inherit'}
-              startIcon={<QrCodeIcon fontSize="small" />}
-              onClick={handleCopyDisplay}
-              fullWidth
-              sx={{ borderRadius: 9999, fontWeight: 700, color: copiedDisplay ? undefined : 'text.secondary', borderColor: 'divider' }}
+              onClick={() => window.open(displayUrl, '_blank', 'noopener')}
+              startIcon={<OpenInNewIcon sx={{ fontSize: 16 }} />}
+              sx={{ borderRadius: 9999, px: 2, flexShrink: 0 }}
             >
-              {copiedDisplay ? 'Copied!' : 'Display URL'}
+              Open
             </Button>
-          </Tooltip>
+          </Box>
         </Box>
+
         <Button
-          variant="outlined"
-          startIcon={<DownloadIcon fontSize="small" />}
           onClick={handleDownload}
-          fullWidth
-          sx={{ borderRadius: 9999, fontWeight: 700, color: 'text.secondary', borderColor: 'divider' }}
+          startIcon={<DownloadIcon sx={{ fontSize: 18 }} />}
+          sx={{ borderRadius: 9999, alignSelf: 'center', px: 2.5, color: 'text.secondary' }}
         >
-          Download PNG
+          Download the code as a PNG
         </Button>
       </DialogContent>
     </Dialog>
