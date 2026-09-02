@@ -15,13 +15,13 @@ import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import Alert from '@mui/material/Alert';
-import Divider from '@mui/material/Divider';
 import IconButton from '@mui/material/IconButton';
 import SearchIcon from '@mui/icons-material/Search';
 import LinkIcon from '@mui/icons-material/Link';
 import QrCodeIcon from '@mui/icons-material/QrCode';
 import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
+import CheckIcon from '@mui/icons-material/Check';
 import PeopleOutlinedIcon from '@mui/icons-material/PeopleOutlined';
 import CircularProgress from '@mui/material/CircularProgress';
 import Avatar from '@mui/material/Avatar';
@@ -42,24 +42,41 @@ interface Props {
 }
 
 /**
- * State machine for the Add Attendee dialog:
- * - `lookup`          — initial state; shows email field + "Look up" button.
+ * State machine for the Add attendee dialog:
+ * - `lookup`          — resting state; email field + "Look up". Also where a
+ *                       completed check-in lands, so several people can be added in a row.
  * - `found-pre`       — email matched a pre-registered, unchecked-in attendee; confirm to check in.
- * - `found-duplicate` — email matched an already checked-in attendee; shows a warning.
+ * - `found-duplicate` — email matched an already checked-in attendee.
  * - `walk-in`         — email not found; collect first/last name for a walk-in check-in.
- * - `success`         — check-in completed; shows summary with "Add another" / "Done".
  */
-type DialogMode = 'lookup' | 'found-pre' | 'found-duplicate' | 'walk-in' | 'success';
+type DialogMode = 'lookup' | 'found-pre' | 'found-duplicate' | 'walk-in';
+
+/** One label/value row in the dialog's detail block. */
+function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, py: 1 }}>
+      <Typography variant="body2" color="text.secondary">{label}</Typography>
+      <Typography
+        variant="body2"
+        sx={{ fontWeight: 600, fontFamily: mono ? 'monospace' : undefined, textAlign: 'right', wordBreak: 'break-all' }}
+      >
+        {value}
+      </Typography>
+    </Box>
+  );
+}
+
+function dialogTime(iso: string) {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
 
 /**
- * Dialog for manually adding or checking in an attendee from the Dashboard.
+ * Dialog for checking someone in from the Dashboard.
  *
- * Flow:
- *   1. Staff enters an email and clicks "Look up".
- *   2. If the email is pre-registered → confirm check-in (found-pre).
- *   3. If already checked in → show duplicate warning (found-duplicate).
- *   4. If unknown → collect name and create a walk-in record (walk-in).
- *   5. On success → show confirmation with ticket details (success).
+ * Runs the same loop as the check-in desk: look up an email, confirm the match
+ * or take them as a walk-in, then land back on an empty, focused email field with
+ * the last person confirmed above it — so a short queue can be cleared without
+ * reopening the dialog each time.
  */
 function AddAttendeeDialog({ eventId, open, onClose, walkInTicketTitle, walkInTicketVenue }: { eventId: string; open: boolean; onClose: () => void; walkInTicketTitle?: string; walkInTicketVenue?: string }) {
   const [email, setEmail] = useState('');
@@ -67,26 +84,33 @@ function AddAttendeeDialog({ eventId, open, onClose, walkInTicketTitle, walkInTi
   const [foundKey, setFoundKey] = useState('');
   const [foundAttendee, setFoundAttendee] = useState<Attendee | null>(null);
   const [walkIn, setWalkIn] = useState({ firstName: '', lastName: '' });
-  const [success, setSuccess] = useState<Attendee | null>(null);
+  const [lastAdded, setLastAdded] = useState<Attendee | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const emailRef = useRef<HTMLInputElement>(null);
 
-  function handleClose() {
+  /** Back to the resting state, cursor in the email field, ready for the next person. */
+  function resetToLookup() {
     setEmail('');
     setMode('lookup');
     setFoundKey('');
     setFoundAttendee(null);
     setWalkIn({ firstName: '', lastName: '' });
-    setSuccess(null);
     setError('');
+    requestAnimationFrame(() => emailRef.current?.focus());
+  }
+
+  function handleClose() {
+    resetToLookup();
+    setLastAdded(null);
     onClose();
   }
 
   async function handleLookup(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = email.trim();
-    if (!trimmed) { setError('Enter an email address.'); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) { setError('Please enter a valid email.'); return; }
+    if (!trimmed) { setError('Enter an email address to look up.'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) { setError('That doesn’t look like an email address.'); return; }
     setBusy(true);
     setError('');
     try {
@@ -102,7 +126,7 @@ function AddAttendeeDialog({ eventId, open, onClose, walkInTicketTitle, walkInTi
         setMode('found-pre');
       }
     } catch {
-      setError('Lookup failed. Please try again.');
+      setError('Lookup failed. Check your connection and try again.');
     }
     setBusy(false);
   }
@@ -113,10 +137,10 @@ function AddAttendeeDialog({ eventId, open, onClose, walkInTicketTitle, walkInTi
     setError('');
     try {
       const checked = await markCheckedIn(eventId, foundKey, foundAttendee);
-      setSuccess(checked);
-      setMode('success');
+      setLastAdded(checked);
+      resetToLookup();
     } catch {
-      setError('Check-in failed. Please try again.');
+      setError('Check-in failed. Try again.');
     }
     setBusy(false);
   }
@@ -124,7 +148,7 @@ function AddAttendeeDialog({ eventId, open, onClose, walkInTicketTitle, walkInTi
   async function handleWalkIn(e: React.FormEvent) {
     e.preventDefault();
     const { firstName, lastName } = walkIn;
-    if (!firstName.trim() || !lastName.trim()) { setError('First and last name are required.'); return; }
+    if (!firstName.trim() || !lastName.trim()) { setError('Both names are needed to check someone in.'); return; }
     setBusy(true);
     setError('');
     try {
@@ -135,22 +159,12 @@ function AddAttendeeDialog({ eventId, open, onClose, walkInTicketTitle, walkInTi
         ...(walkInTicketTitle ? { ticketTitle: walkInTicketTitle } : {}),
         ...(walkInTicketVenue ? { ticketVenue: walkInTicketVenue } : {}),
       });
-      setSuccess(attendee);
-      setMode('success');
+      setLastAdded(attendee);
+      resetToLookup();
     } catch {
-      setError('Check-in failed. Please try again.');
+      setError('Check-in failed. Try again.');
     }
     setBusy(false);
-  }
-
-  function handleAddAnother() {
-    setEmail('');
-    setMode('lookup');
-    setFoundKey('');
-    setFoundAttendee(null);
-    setWalkIn({ firstName: '', lastName: '' });
-    setSuccess(null);
-    setError('');
   }
 
   return (
@@ -159,142 +173,126 @@ function AddAttendeeDialog({ eventId, open, onClose, walkInTicketTitle, walkInTi
       onClose={handleClose}
       fullWidth
       maxWidth="xs"
-      slotProps={{ paper: { sx: { borderRadius: 3, maxWidth: 360 } } }}
+      slotProps={{ paper: { sx: { borderRadius: 4, maxWidth: 420 } } }}
     >
-      <DialogTitle sx={{ fontWeight: 700, pr: 6, pt: 2, pb: 1 }}>
-        {mode === 'success' ? 'Checked in!' : 'Add Attendee'}
-        <IconButton onClick={handleClose} size="small" sx={{ position: 'absolute', right: 12, top: 10, color: 'text.secondary' }}>
+      <DialogTitle sx={{ fontWeight: 700, fontSize: 18, pr: 6, pt: 2.5, pb: 1.5 }}>
+        Add attendee
+        <IconButton onClick={handleClose} size="small" aria-label="Close" sx={{ position: 'absolute', right: 12, top: 14, color: 'text.secondary' }}>
           <CloseIcon fontSize="small" />
         </IconButton>
       </DialogTitle>
 
-      <DialogContent sx={{ pb: 3, display: 'flex', flexDirection: 'column' }}>
-        {mode === 'success' && success ? (
-          <Box sx={{ textAlign: 'center', pt: 1 }}>
-            <Box sx={{ width: 56, height: 56, borderRadius: '50%', bgcolor: 'secondary.light', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2 }}>
-              <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="#34A853" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
+      <DialogContent sx={{ pb: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {/* The person just added stays in view while the field resets for the next one */}
+        {lastAdded && mode === 'lookup' && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, bgcolor: '#E6F4EA', borderRadius: 2.5, px: 2, py: 1.5, mt: 0.5 }}>
+            <Box sx={{ width: 26, height: 26, borderRadius: '50%', bgcolor: '#34A853', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <CheckIcon sx={{ fontSize: 16 }} />
             </Box>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Welcome, {success.firstName}!</Typography>
-            <Box sx={{ bgcolor: 'grey.50', borderRadius: 2, p: 2, mt: 2, mb: 3, textAlign: 'left' }}>
-              {[
-                { label: 'Ticket', value: success.ticketNumber, mono: true },
-                { label: 'Name', value: `${success.firstName} ${success.lastName}` },
-                { label: 'Email', value: success.email },
-              ].map((row, i) => (
-                <Box key={row.label}>
-                  {i > 0 && <Divider sx={{ my: 1, borderColor: 'grey.100' }} />}
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="body2" color="text.secondary">{row.label}</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600, fontFamily: row.mono ? 'monospace' : undefined }}>
-                      {row.value}
-                    </Typography>
-                  </Box>
-                </Box>
-              ))}
-            </Box>
-            <Box sx={{ display: 'flex', gap: 1.5 }}>
-              <Button variant="contained" fullWidth onClick={handleAddAnother} sx={{ borderRadius: 9999 }}>
-                Add another
-              </Button>
-              <Button variant="outlined" fullWidth onClick={handleClose} sx={{ borderRadius: 9999, borderColor: 'divider', color: 'text.secondary' }}>
-                Done
-              </Button>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography sx={{ fontWeight: 700, fontSize: 14 }}>
+                {lastAdded.firstName} {lastAdded.lastName} is in
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ fontSize: 12.5 }}>
+                {lastAdded.ticketNumber} at {dialogTime(lastAdded.checkinDate!)}
+              </Typography>
             </Box>
           </Box>
-        ) : (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 0.5 }}>
-            {/* Email field — always visible */}
-            <Box component="form" onSubmit={handleLookup} sx={{ display: 'flex', gap: 1 }}>
-              <TextField
-                label="Email"
-                type="email"
-                value={email}
-                onChange={(e) => { setEmail(e.target.value); setError(''); setMode('lookup'); }}
-                size="small"
-                fullWidth
-                disabled={mode === 'found-pre' || mode === 'walk-in'}
-              />
-              {(mode === 'lookup' || mode === 'found-duplicate') && (
-                <Button type="submit" variant="contained" disabled={busy} sx={{ borderRadius: 9999, whiteSpace: 'nowrap', px: 3.5, py: 0.875 }}>
-                  {busy ? <CircularProgress size={18} color="inherit" /> : 'Look up'}
-                </Button>
-              )}
-            </Box>
+        )}
+
+        {/* Step 1 — email lookup */}
+        {(mode === 'lookup' || mode === 'found-duplicate') && (
+          <Box component="form" onSubmit={handleLookup} sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 0.5 }}>
+            <TextField
+              inputRef={emailRef}
+              label="Email"
+              type="email"
+              value={email}
+              onChange={(e) => { setEmail(e.target.value); setError(''); setMode('lookup'); }}
+              placeholder="jane@example.com"
+              autoFocus
+              fullWidth
+              slotProps={{ htmlInput: { autoCapitalize: 'off', autoCorrect: 'off', spellCheck: false } }}
+            />
 
             {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
 
             {mode === 'found-duplicate' && foundAttendee && (
               <Alert severity="warning" sx={{ borderRadius: 2 }}>
                 <strong>{foundAttendee.firstName} {foundAttendee.lastName}</strong> already checked in at{' '}
-                {new Date(foundAttendee.checkinDate!).toUTCString()}.
+                {dialogTime(foundAttendee.checkinDate!)}. Send them through.
               </Alert>
             )}
 
-            {/* Pre-registered confirmation */}
-            {mode === 'found-pre' && foundAttendee && (
-              <>
-                <Alert severity="info" sx={{ borderRadius: 2 }}>Pre-registered attendee found</Alert>
-                <Box sx={{ bgcolor: 'grey.50', borderRadius: 2, p: 2 }}>
-                  {[
-                    { label: 'Ticket', value: foundAttendee.ticketNumber, mono: true },
-                    { label: 'Name', value: `${foundAttendee.firstName} ${foundAttendee.lastName}` },
-                  ].map((row, i) => (
-                    <Box key={row.label}>
-                      {i > 0 && <Divider sx={{ my: 1, borderColor: 'grey.100' }} />}
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <Typography variant="body2" color="text.secondary">{row.label}</Typography>
-                        <Typography variant="body2" sx={{ fontWeight: 600, fontFamily: row.mono ? 'monospace' : undefined }}>
-                          {row.value}
-                        </Typography>
-                      </Box>
-                    </Box>
-                  ))}
-                </Box>
-                <Box sx={{ display: 'flex', gap: 1.5 }}>
-                  <Button variant="contained" fullWidth disabled={busy} onClick={handleConfirmBevy} sx={{ borderRadius: 9999 }}>
-                    {busy ? <CircularProgress size={18} color="inherit" /> : `Check in ${foundAttendee.firstName}`}
-                  </Button>
-                  <Button variant="text" onClick={() => { setMode('lookup'); setEmail(''); setError(''); }} sx={{ color: 'text.secondary' }}>
-                    Back
-                  </Button>
-                </Box>
-              </>
-            )}
+            <Box sx={{ display: 'flex', gap: 1.5 }}>
+              <Button type="submit" variant="contained" fullWidth disabled={busy} sx={{ borderRadius: 9999, py: 1.1 }}>
+                {busy ? <CircularProgress size={20} color="inherit" /> : 'Look up'}
+              </Button>
+              {lastAdded && (
+                <Button onClick={handleClose} sx={{ borderRadius: 9999, px: 3, color: 'text.secondary' }}>
+                  Done
+                </Button>
+              )}
+            </Box>
+          </Box>
+        )}
 
-            {/* Walk-in form */}
-            {mode === 'walk-in' && (
-              <>
-                <Alert severity="info" sx={{ borderRadius: 2 }}>Not pre-registered, checking in as walk-in</Alert>
-                <Box component="form" onSubmit={handleWalkIn} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
-                    <TextField
-                      label="First Name"
-                      size="small"
-                      value={walkIn.firstName}
-                      onChange={(e) => { setWalkIn((w) => ({ ...w, firstName: e.target.value })); setError(''); }}
-                      fullWidth
-                    />
-                    <TextField
-                      label="Last Name"
-                      size="small"
-                      value={walkIn.lastName}
-                      onChange={(e) => { setWalkIn((w) => ({ ...w, lastName: e.target.value })); setError(''); }}
-                      fullWidth
-                    />
-                  </Box>
-                  <Box sx={{ display: 'flex', gap: 1.5 }}>
-                    <Button type="submit" variant="contained" fullWidth disabled={busy} sx={{ borderRadius: 9999 }}>
-                      {busy ? <CircularProgress size={18} color="inherit" /> : 'Check in as walk-in'}
-                    </Button>
-                    <Button variant="text" onClick={() => { setMode('lookup'); setEmail(''); setError(''); }} sx={{ color: 'text.secondary' }}>
-                      Back
-                    </Button>
-                  </Box>
-                </Box>
-              </>
-            )}
+        {/* Step 2a — pre-registered, confirm */}
+        {mode === 'found-pre' && foundAttendee && (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 0.5 }}>
+            <Box>
+              <Typography variant="body2" color="text.secondary">On the list</Typography>
+              <Typography sx={{ fontWeight: 700, fontSize: 22, letterSpacing: '-0.02em', lineHeight: 1.25, mt: 0.25 }}>
+                {foundAttendee.firstName} {foundAttendee.lastName}
+              </Typography>
+            </Box>
+            <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2.5, px: 2, py: 0.5 }}>
+              <DetailRow label="Ticket" value={foundAttendee.ticketNumber} mono />
+              <DetailRow label="Email" value={foundAttendee.email} />
+            </Box>
+            {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
+            <Button variant="contained" fullWidth disabled={busy} onClick={handleConfirmBevy} sx={{ borderRadius: 9999, py: 1.1 }}>
+              {busy ? <CircularProgress size={20} color="inherit" /> : `Check in ${foundAttendee.firstName}`}
+            </Button>
+            <Button onClick={resetToLookup} sx={{ color: 'text.secondary', borderRadius: 9999 }}>
+              Someone else
+            </Button>
+          </Box>
+        )}
+
+        {/* Step 2b — unknown email, take them as a walk-in */}
+        {mode === 'walk-in' && (
+          <Box component="form" onSubmit={handleWalkIn} sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 0.5 }}>
+            <Box>
+              <Typography variant="body2" color="text.secondary">Not on the list</Typography>
+              <Typography sx={{ fontWeight: 700, fontSize: 16, lineHeight: 1.35, mt: 0.25, wordBreak: 'break-all' }}>
+                Add {email} as a walk-in
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
+              <TextField
+                label="First name"
+                size="small"
+                value={walkIn.firstName}
+                onChange={(e) => { setWalkIn((w) => ({ ...w, firstName: e.target.value })); setError(''); }}
+                autoFocus
+                fullWidth
+              />
+              <TextField
+                label="Last name"
+                size="small"
+                value={walkIn.lastName}
+                onChange={(e) => { setWalkIn((w) => ({ ...w, lastName: e.target.value })); setError(''); }}
+                fullWidth
+              />
+            </Box>
+            {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
+            <Button type="submit" variant="contained" fullWidth disabled={busy} sx={{ borderRadius: 9999, py: 1.1 }}>
+              {busy ? <CircularProgress size={20} color="inherit" /> : 'Check in as walk-in'}
+            </Button>
+            <Button onClick={resetToLookup} sx={{ color: 'text.secondary', borderRadius: 9999 }}>
+              Try a different email
+            </Button>
           </Box>
         )}
       </DialogContent>
