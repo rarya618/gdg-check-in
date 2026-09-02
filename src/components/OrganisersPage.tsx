@@ -18,6 +18,9 @@ import TableRow from '@mui/material/TableRow';
 import TableCell from '@mui/material/TableCell';
 import TableContainer from '@mui/material/TableContainer';
 import Alert from '@mui/material/Alert';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
 import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
 import PersonRemoveOutlinedIcon from '@mui/icons-material/PersonRemoveOutlined';
@@ -106,6 +109,7 @@ export default function OrganisersPage({ userRole, userEmail, userTeamId }: Prop
     setRole('team_member');
     setNewTeamId('');
     setError('');
+    setAdded('');
   }
 
   async function handleAdd(e: React.FormEvent) {
@@ -181,32 +185,41 @@ export default function OrganisersPage({ userRole, userEmail, userTeamId }: Prop
             {isSuperAdmin ? 'Who can sign in, and what they can do once they are in.' : 'The people on your team who can run check-in.'}
           </Typography>
         </Box>
-        {!showAdd && (
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openAdd} sx={{ borderRadius: 9999, px: 2.5, whiteSpace: 'nowrap' }}>
-            Add organiser
-          </Button>
-        )}
+        <Button variant="contained" startIcon={<AddIcon />} onClick={openAdd} sx={{ borderRadius: 9999, px: 2.5, whiteSpace: 'nowrap' }}>
+          Add organiser
+        </Button>
       </Box>
 
       <Box sx={{ px: { xs: 2.5, md: 4 }, display: 'flex', flexDirection: 'column', gap: 2.5 }}>
 
-        {/* Add — revealed on demand, and stays open so several people can be added in a row */}
-        {showAdd && (
-          <Paper elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 3, p: { xs: 2.5, md: 3 } }}>
-            <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2, mb: 2 }}>
-              <Box>
-                <Typography sx={{ fontWeight: 700, fontSize: 15 }}>Add organiser</Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
-                  They get access the next time they sign in with this Google account.
-                  {!isSuperAdmin && userTeamId && <> They join <strong>{teamName(userTeamId)}</strong>.</>}
-                </Typography>
-              </Box>
-              <IconButton onClick={closeAdd} size="small" aria-label="Close" sx={{ color: 'text.secondary' }}>
-                <CloseIcon fontSize="small" />
-              </IconButton>
-            </Box>
+        {/* Add organiser lives in a dialog — see the list, not a form, on arrival */}
+        <Dialog
+          open={showAdd}
+          onClose={closeAdd}
+          fullWidth
+          maxWidth="xs"
+          slotProps={{ paper: { sx: { borderRadius: 4, maxWidth: 420 } } }}
+        >
+          <DialogTitle sx={{ fontWeight: 700, fontSize: 18, pr: 6, pt: 2.5, pb: 1.5 }}>
+            Add organiser
+            <IconButton onClick={closeAdd} size="small" aria-label="Close" sx={{ position: 'absolute', right: 12, top: 14, color: 'text.secondary' }}>
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </DialogTitle>
 
-            <Box component="form" onSubmit={handleAdd} sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          <DialogContent sx={{ pb: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              They get access the next time they sign in with this Google account.
+              {!isSuperAdmin && userTeamId && <> They join <strong>{teamName(userTeamId)}</strong>.</>}
+            </Typography>
+
+            {added && !error && (
+              <Alert severity="success" sx={{ borderRadius: 2 }}>
+                <strong>{added}</strong> can now sign in. Add another, or close this.
+              </Alert>
+            )}
+
+            <Box component="form" onSubmit={handleAdd} sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 0.5 }}>
               <TextField
                 inputRef={emailRef}
                 type="email"
@@ -214,11 +227,11 @@ export default function OrganisersPage({ userRole, userEmail, userTeamId }: Prop
                 onChange={(e) => { setEmail(e.target.value); setError(''); setAdded(''); }}
                 placeholder="organiser@example.com"
                 label="Email"
-                size="small"
-                sx={{ flex: 1, minWidth: 220 }}
+                fullWidth
+                autoFocus
                 slotProps={{ htmlInput: { autoCapitalize: 'off', autoCorrect: 'off', spellCheck: false } }}
               />
-              <FormControl size="small" sx={{ minWidth: 160 }}>
+              <FormControl fullWidth>
                 <InputLabel>Role</InputLabel>
                 <Select value={role} label="Role" onChange={(e) => setRole(e.target.value as AdminRole)}>
                   {roleOptions.map((r) => (
@@ -227,7 +240,7 @@ export default function OrganisersPage({ userRole, userEmail, userTeamId }: Prop
                 </Select>
               </FormControl>
               {isSuperAdmin && (
-                <FormControl size="small" sx={{ minWidth: 170 }}>
+                <FormControl fullWidth>
                   <InputLabel shrink>Team</InputLabel>
                   <Select
                     value={newTeamId}
@@ -235,7 +248,7 @@ export default function OrganisersPage({ userRole, userEmail, userTeamId }: Prop
                     notched
                     onChange={(e) => setNewTeamId(e.target.value)}
                     displayEmpty
-                    renderValue={(val) => (val ? teamName(val) ?? val : 'No team')}
+                    renderValue={(val) => (val ? teamName(val) ?? val : <Box component="span" sx={{ color: 'text.disabled' }}>No team</Box>)}
                   >
                     <MenuItem value="">No team</MenuItem>
                     {teams.map((t) => (
@@ -244,19 +257,26 @@ export default function OrganisersPage({ userRole, userEmail, userTeamId }: Prop
                   </Select>
                 </FormControl>
               )}
-              <Button type="submit" variant="contained" disabled={adding} sx={{ borderRadius: 9999, whiteSpace: 'nowrap', px: 3, py: 1 }}>
-                {adding ? 'Adding…' : 'Add'}
-              </Button>
-            </Box>
 
-            {error && <Alert severity="error" sx={{ mt: 2, borderRadius: 2 }}>{error}</Alert>}
-            {added && !error && (
-              <Alert severity="success" sx={{ mt: 2, borderRadius: 2 }}>
-                <strong>{added}</strong> can now sign in. Add another, or close this.
-              </Alert>
-            )}
-          </Paper>
-        )}
+              <Typography variant="body2" color="text.secondary" sx={{ fontSize: 12.5 }}>
+                {ROLES.find((r) => r.value === role)?.can}
+              </Typography>
+
+              {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
+
+              <Box sx={{ display: 'flex', gap: 1.5 }}>
+                <Button type="submit" variant="contained" fullWidth disabled={adding} sx={{ borderRadius: 9999, py: 1.1 }}>
+                  {adding ? 'Adding…' : 'Add organiser'}
+                </Button>
+                {added && (
+                  <Button onClick={closeAdd} sx={{ borderRadius: 9999, px: 3, color: 'text.secondary' }}>
+                    Done
+                  </Button>
+                )}
+              </Box>
+            </Box>
+          </DialogContent>
+        </Dialog>
 
         {/* The list */}
         <TableContainer component={Paper} elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 3, overflowX: 'auto' }}>
